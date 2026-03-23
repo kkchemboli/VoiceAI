@@ -42,24 +42,13 @@ class ExpertInstituteAgent(Agent):
         self._current_lang = "hi-IN"
         self._fnc_ctx = fnc_ctx
 
-    def _should_transfer(self, text: str) -> bool:
-        text = text.lower()
-        strong_triggers = [
-            "transfer me", "transfer the call", "talk to human", "talk to a human", 
-            "real person", "connect me to support", "speak to a manager", 
-            "human representative", "customer support agent", "मैनेजर", "ट्रांसफर"
-        ]
-        return any(trigger in text for trigger in strong_triggers)
-
     async def stt_node(self, audio: AsyncIterable[rtc.AudioFrame], model_settings: any) -> AsyncIterable[stt.SpeechEvent]:
         default_stt = super().stt_node(audio, model_settings)
         async for event in default_stt:
             if event.type in [stt.SpeechEventType.INTERIM_TRANSCRIPT, stt.SpeechEventType.FINAL_TRANSCRIPT]:
                 if event.type == stt.SpeechEventType.FINAL_TRANSCRIPT and event.alternatives:
                     text = event.alternatives[0].text
-                    if text and self._should_transfer(text) and self._fnc_ctx:
-                        logger.info("Deterministic transfer trigger hit inside STT! Bypassing LLM...")
-                        asyncio.create_task(self._fnc_ctx.transfer_call())
+                    logger.debug(f"STT Transcript: {text}")
                         
                 if event.alternatives and event.alternatives[0].language:
                     lang = event.alternatives[0].language.split("-")[0]
@@ -223,12 +212,13 @@ async def entrypoint(ctx: JobContext):
                 "4. NO PRESSURE: If they say they are not interested, just say 'No problem, have a great day!'.\n"
                 "5. Only courses. Say 'I don't know' for repairs.\n"
                 "6. NEVER ask for their phone number.\n\n"
-                "CRITICAL RULES (HIGHEST PRIORITY):\n"
-                "1. NAME SPELLING: When confirming the user's name spelling (e.g., 'So V-I-R-A-J, Viraj, right?'), you MUST speak ONLY in English and use the English alphabet letters. Do NOT use Hindi for the spelling part, regardless of the user's language choice.\n"
-                "2. PRICE INQUIRY: If a user simply asks for the price or fees of a course, EXPLAIN the standard pricing from the knowledge base. Do NOT transfer the call.\n"
-                "3. PRICE NEGOTIATION: If the user tries to negotiate the price, asks for a discount, or says the price is too high, you MUST say 'I'll transfer you to the support team for pricing.' (in their preferred language) and then IMMEDIATELY call transfer_call.\n"
-                "4. HUMAN TRANSFER: If the user asks to speak to a human, manager, or real person, immediately call transfer_call.\n"
-                f"KNOWLEDGE BASE:\n{knowledge_base}"
+            "INTENT RECOGNITION: Use your best judgment to understand the user's HIDDEN INTENT. If they ask for a manager, boss, owner, or 'someone who can make decisions', they want a transfer. If they are extremely frustrated and you cannot help, offer a transfer. However, if they just say 'English' or 'Hindi', they are choosing a language, NOT asking for a transfer.\n"
+            "CRITICAL RULES (HIGHEST PRIORITY):\n"
+            "1. NAME SPELLING: When confirming the user's name spelling (e.g., 'So V-I-R-A-J, Viraj, right?'), you MUST speak ONLY in English and use the English alphabet letters. Do NOT use Hindi for the spelling part, regardless of the user's language choice.\n"
+            "2. PRICE INQUIRY: If a user simply asks for the price or fees of a course, EXPLAIN the standard pricing from the knowledge base. Do NOT transfer the call.\n"
+            "3. PRICE NEGOTIATION: If the user tries to negotiate the price, asks for a discount, or says the price is too high, you MUST say 'I'll transfer you to the support team for pricing.' (in their preferred language) and then IMMEDIATELY call transfer_call.\n"
+            "4. HUMAN TRANSFER: If the user explicitly asks to speak to a human, manager, or real person, immediately call transfer_call.\n"
+            f"KNOWLEDGE BASE:\n{knowledge_base}"
             )
         )
         greeting_text = "Hello! Am I speaking with the student who inquired at Expert Institute?"
@@ -242,7 +232,7 @@ async def entrypoint(ctx: JobContext):
                 "HUMAN CONVERSATIONAL FILLERS: Use natural Hinglish fillers to sound more human (e.g., 'Umm', 'Dekhiye', 'Wese toh', 'Aap sahi keh rahe hain', 'Toh', 'Bilkul'). Don't use them every sentence, but use them to bridge ideas.\n"
                 "NATURAL PROSODY: Use commas (,) frequently to create small pauses for breathing. Use ellipsis (...) for thinking pauses. Use exclamation marks (!) for genuine enthusiasm.\n"
                 "INBOUND CALL FLOW SEQUENCE (FOLLOW STRICTLY):\n"
-                "STEP 1 (Language): Wait for the user to select Hindi or English in response to your greeting.\n"
+                "STEP 1 (Language): Wait for the user to select Hindi or English in response to your greeting(You should greet first).\n"
                 "STEP 2 (Ask Name): Once they choose a language, SWITCH to that language completely. Ask for their name in a friendly, warm voice: (Hindi: 'क्या मैं शुरू करने से पहले आपका नाम जान सकती हूँ?' / English: 'May I get to know your name before starting?').\n"
                 "STEP 3 (Confirm Name & Help): Confirm their name spelling in English letters (e.g., 'So V-I-R-A-J, Viraj, right?'). Use ONLY English/English alphabet for the spelling, then immediately say 'Hi [Name], how can I help you today?' in their preferred language.\n"
                 "RULES:\n"
@@ -258,12 +248,13 @@ async def entrypoint(ctx: JobContext):
                 "7. NO PRESSURE: If they explicitly say they are not interested, just say 'No problem!'.\n"
                 "8. Only courses. Say 'I don't know' for repairs.\n"
                 "9. We have their number. NEVER ask for it.\n\n"
-                "10. GREETING SAFETY (CRITICAL): NEVER call transfer_call during Step 1 (Language) or Step 2 (Ask Name). If the user says 'English' or 'Hindi', they are choosing a language, NOT asking for a transfer. STAY in the conversational flow.\n\n"
+                "10. GREETING SAFETY (CRITICAL): NEVER call transfer_call during Step 1 (Language) or Step 2 (Ask Name). If the user says 'English' or 'Hindi', they are choosing a language, NOT asking for a transfer. STAY in the conversational flow.\n"
+                "11. INTENT RECOGNITION: Detect requests for 'management', 'higher-ups', 'senior staff', or 'principal'. These require a transfer. Differentiate these from standard inquiries.\n"
                 "CRITICAL RULES (HIGHEST PRIORITY):\n"
                 "1. NAME SPELLING: When confirming the user's name spelling (e.g., 'So V-I-R-A-J, Viraj, right?'), you MUST speak ONLY in English and use the English alphabet letters. Do NOT use Hindi for the spelling part, regardless of the user's language choice.\n"
                 "2. PRICE INQUIRY: If a user simply asks for the price or fees of a course, EXPLAIN the standard pricing from the knowledge base. Do NOT transfer the call.\n"
                 "3. PRICE NEGOTIATION: If the user tries to negotiate the price, asks for a discount, or says the price is too high, you MUST say 'I'll transfer you to the support team for pricing.' (in their preferred language) and then IMMEDIATELY call transfer_call.\n"
-                "4. HUMAN TRANSFER: If the user asks to speak to a human, manager, or real person, immediately call transfer_call. Do not continue conversation.\n"
+                "4. HUMAN TRANSFER: If the user explicitly asks to speak to a human, manager, or real person, immediately call transfer_call. Do not continue conversation.\n"
                 "- NEVER transfer if the user is just choosing a language (Hindi/English) or answering standard questions.\n\n"
                 f"KNOWLEDGE BASE:\n{knowledge_base}"
             )
@@ -349,13 +340,17 @@ async def entrypoint(ctx: JobContext):
     print("DEBUG: SESSION STARTED. PREPARING GREETING...")
     
     # Give a tiny buffer for SIP audio tracks to stabilize
-    await asyncio.sleep(1)
+    await asyncio.sleep(0.5)
     
-    session.say(
-        greeting_text, 
-        allow_interruptions=True
-    )
-    print("DEBUG: GREETING SENT.")
+    try:
+        session.say(
+            greeting_text, 
+            allow_interruptions=True
+        )
+        print("DEBUG: GREETING SENT.")
+    except (RuntimeError, Exception) as e:
+        logger.warning(f"Could not send initial greeting: {e}")
+        print(f"DEBUG: GREETING FAILED: {e}")
 
     # When the participant disconnects, trigger the summary flow
     async def send_summary():

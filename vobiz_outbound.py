@@ -32,10 +32,10 @@ async def make_outbound_call(destination_number):
 
     try:
         # Step 1: Dispatch the agent FIRST so it's ready in the room
-        print(f"Dispatching agent 'outbound_caller' to room '{room_name}'...")
+        print(f"Dispatching agent 'agent' to room '{room_name}'...")
         await lkapi.agent_dispatch.create_dispatch(
             api.CreateAgentDispatchRequest(
-                agent_name="outbound_caller",
+                agent_name="agent",
                 room=room_name,
             )
         )
