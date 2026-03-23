@@ -1,217 +1,26 @@
-Voice AI Agent Knowledge Base
-
-Company: Expert Institute of Advance Technologies Pvt. Ltd.
-Industry: Technical training institute (electronics repair)
-Location: New Delhi, India
-
-1. Company Overview
-
-Expert Institute is an ISO 9001:2015 certified technical training institute specializing in electronics repair courses such as mobile, laptop, CCTV, and LED/LCD TV repairing. The institute provides practical chip-level training with real tools and devices to prepare students for jobs or starting their own repair businesses.
-
-The institute has 15+ years of experience and has trained thousands of students who now work in service centers or run their own businesses.
-
-2. Courses Offered
-
-The institute provides multiple technical repair training programs.
-
-Mobile Repairing Course
-
-Covers smartphone troubleshooting and repair.
-
-Includes Android, iPhone, GSM/CDMA devices.
-
-Training includes hardware and software repair techniques.
-
-iPhone Repairing Course
-
-Chip-level repair training for Apple iPhones.
-
-Includes motherboard repair, lens repair, and advanced diagnostics.
-
-Laptop Repairing Course
-
-Chip-level laptop motherboard repair.
-
-Includes BIOS programming, CPU testing, and debugging.
-
-LED / LCD Smart TV Repairing
-
-TV motherboard diagnostics
-
-Power supply board repair
-
-Screen faults and display troubleshooting.
-
-CCTV Camera Training
-
-Installation and maintenance of CCTV systems
-
-Surveillance setup and troubleshooting.
-
-Printer Repairing Course
-
-Laserjet, Inkjet, and Dot Matrix printer repair training.
-
-Courses are designed for beginners as well as experienced technicians.
-
-3. Course Duration
-
-Typical course duration ranges from:
-
-45 days to 3 months depending on the course.
-
-Students can choose:
-
-Fast-track batch
-
-Regular batch
-
-Full-day training
-
-4. Training Method
-
-Training is 100% practical and hands-on.
-
-Students practice using professional tools such as:
-
-BGA Rework Station
-
-Oscilloscope (CRO)
-
-Debug Card
-
-CPU Tester
-
-BIOS Programmer
-
-Laptop Battery Tester
-
-OCA Machine for display repair
-
-5. Features & Benefits
-
-Students get multiple advantages:
-
-100% practical training
-
-Live service center experience
-
-Lifetime technical support
-
-Job placement assistance
-
-Business startup guidance
-
-Flexible class schedules
-
-Access to advanced repair tools
-
-Continuous technology updates
-
-6. Career Opportunities After Course
-
-After completing the training students can:
-
-Work in mobile or laptop service centers
-
-Start their own repair shop
-
-Work as freelance technicians
-
-Join electronics service companies
-
-Electronics repair is a high-demand technical skill with good earning potential.
-
-7. Eligibility
-
-Anyone can join:
-
-Students after 10th or 12th
-
-College students
-
-Working professionals
-
-Business owners wanting to start a repair shop
-
-No prior technical knowledge is required.
-
-8. Batch Information
-
-New batches start every few days
-
-Limited seats per batch
-
-Demo classes available
-
-9. Contact Details
-
-Address:
-107, 3rd Floor, Kingsway Camp
-Near GTB Nagar Metro Station Gate No.1
-New Delhi – 110009, India
-
-Phone / WhatsApp:
-+91 9718888700
-
-Email:
-admin@expertinstitute.in
-
-10. Common Questions (for AI Agent)
-Q: Do you provide practical training?
-
-Yes, all courses are 100% practical with real devices and professional tools.
-
-Q: Do you provide job placement?
-
-Yes, the institute provides job assistance and business guidance after course completion.
-
-Q: Can beginners join the course?
-
-Yes, courses start from basics and move to advanced chip-level repair.
-
-Q: What is the course duration?
-
-Most courses are 45 days to 3 months depending on the program.
-
-Q: Do you provide certificates?
-
-Yes, students receive a certificate after completing the training.
-
-Q: Do you offer demo classes?
-
-Yes, demo classes are available before enrollment.
-
-11. Voice Agent Call Flow (Recommended)
-
-Greeting
-
-Hello! Thank you for calling Expert Institute. How can I help you today?
-
-Intent Detection
-
-Course inquiry
-
-Admission
-
-Fees
-
-Batch timing
-
-Location
-
-Demo class
-
-Lead Capture
-
-Name
-
-Phone number
-
-Course interested in
-
-City
-
-Conversion
-
-I can schedule a free demo class for you. Would you like to book a slot?
+COURSES:
+- Mobile Repairing (Android, iPhone, hardware/software)
+- iPhone (Chip-level motherboard)
+- Laptop (Chip-level, BIOS)
+- LED/LCD TV (Motherboard, screen)
+- CCTV (Installation & maint)
+- Printer (Repair training)
+
+DETAILS:
+- Duration: 45 days to 3 months. Fast-track available.
+- Fees: Mobile Repairing - ₹12,000 (includes ₹2000 security deposit).
+- Method: 100% Practical on real devices.
+- Benefits: Lifetime support, Job placement, Business guidance.
+- Demos: Free demo classes available.
+
+PRICING (Placeholders - PLEASE UPDATE):
+- Mobile Repairing: 15,000 INR
+- iPhone Specialist: 25,000 INR
+- Laptop Repairing: 18,000 INR
+- LED/LCD/CCTV/Printer: 12,000 to 15,000 INR
+- Note: These are standard fees. For special discounts or combo offers, transfer to support.
+
+CONTACT:
+Address: 107, 3rd Floor, Kingsway Camp (GTB Metro Gate 1), Delhi.
+Phone/WhatsApp: +91 9718888700
+Email: admin@expertinstitute.in 

@@ -26,13 +26,24 @@ async def make_outbound_call(destination_number):
         destination_number = '+' + destination_number
 
     lkapi = api.LiveKitAPI(url, api_key, api_secret)
-    
-    print(f"DEBUG: Dialing {destination_number} via Trunk {trunk_id}...")
-    
+
+    print(f"Dialing {destination_number} via Trunk {trunk_id}...")
+    print(f"Room: {room_name}")
+
     try:
-        # Create SIP Participant
-        # This tells LiveKit to use the Vobiz Trunk to dial the number
-        participant = await lkapi.sip.create_sip_participant(
+        # Step 1: Dispatch the agent FIRST so it's ready in the room
+        print(f"Dispatching agent 'outbound_caller' to room '{room_name}'...")
+        await lkapi.agent_dispatch.create_dispatch(
+            api.CreateAgentDispatchRequest(
+                agent_name="outbound_caller",
+                room=room_name,
+            )
+        )
+        print("Agent dispatched successfully!")
+
+        # Step 2: Create SIP Participant (dial the phone number)
+        print(f"Initiating SIP call to {destination_number}...")
+        await lkapi.sip.create_sip_participant(
             api.CreateSIPParticipantRequest(
                 room_name=room_name,
                 sip_trunk_id=trunk_id,
@@ -41,9 +52,8 @@ async def make_outbound_call(destination_number):
                 participant_name="Outbound Caller"
             )
         )
-        print(f"Call initiated successfully! Participant Identity: {participant.identity}")
-        print(f"The agent will join room '{room_name}' as soon as the user answers.")
-        
+        print(f"Call initiated! Answer the phone to hear the agent.")
+
     except Exception as e:
         print(f"Error initiating call: {e}")
     finally:
