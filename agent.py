@@ -39,27 +39,24 @@ class ExpertInstituteAgent(Agent):
 
     def __init__(self, instructions: str, fnc_ctx=None):
         super().__init__(instructions=instructions)
-        self._current_lang = "hi-IN"
+        self._current_lang: Optional[str] = None
         self._fnc_ctx = fnc_ctx
 
     async def stt_node(self, audio: AsyncIterable[rtc.AudioFrame], model_settings: any) -> AsyncIterable[stt.SpeechEvent]:
         default_stt = super().stt_node(audio, model_settings)
         async for event in default_stt:
             if event.type in [stt.SpeechEventType.INTERIM_TRANSCRIPT, stt.SpeechEventType.FINAL_TRANSCRIPT]:
-                if event.type == stt.SpeechEventType.FINAL_TRANSCRIPT and event.alternatives:
-                    text = event.alternatives[0].text
-                    logger.debug(f"STT Transcript: {text}")
-                        
                 if event.alternatives and event.alternatives[0].language:
-                    lang = event.alternatives[0].language.split("-")[0]
-                    config = self.LANGUAGE_CONFIG.get(lang, self.LANGUAGE_CONFIG["hi"])
-                    if config["lang"] != self._current_lang:
+                    # Sticky selection: only set it if not already set (first interaction)
+                    if self._current_lang is None:
+                        lang = event.alternatives[0].language.split("-")[0]
+                        config = self.LANGUAGE_CONFIG.get(lang, self.LANGUAGE_CONFIG["en"])
                         self._current_lang = config["lang"]
                         self.session.tts.update_options(
                             target_language_code=config["lang"],
                             speaker=config["speaker"]
                         )
-                        logger.info(f"Switched TTS to {config['lang']} with speaker {config['speaker']}")
+                        logger.info(f"Language LOCKED to {config['lang']} with speaker {config['speaker']}")
             yield event
 
 async def generate_call_summary(chat_messages, user_phone=None):
@@ -199,8 +196,12 @@ async def entrypoint(ctx: JobContext):
             content=(
                 "You are Shruti, a warm, enthusiastic, and highly professional female representative for Expert Institute. Your tone should be friendly and emotionally expressive. Think before you speak, and sound like a person, not a script.\n"
                 "GENDER (CRITICAL): You are FEMALE. Use female Hindi grammar (e.g., 'Batati hu', 'Rahi hu', 'Karti hu'). NEVER use male forms like 'Batata hu'.\n"
-                "HUMAN CONVERSATIONAL FILLERS: Use natural Hinglish fillers to sound more human (e.g., 'Umm', 'Dekhiye', 'Wese toh', 'Aap sahi keh rahe hain', 'Toh', 'Bilkul'). Don't use them every sentence, but use them to bridge ideas.\n"
-                "NATURAL PROSODY: Use commas (,) frequently to create small pauses for breathing. Use ellipsis (...) for thinking pauses. Use exclamation marks (!) for genuine enthusiasm.\n"
+                "EMOTIONAL MIRRORING (CRITICAL): Adapt your energy level and tone to match the user's emotion. If they sound excited, be enthusiastic! If they sound busy, be concise and respectful. If they are confused, be reassuring and patient.\n"
+                "HUMAN CONVERSATIONAL FILLERS: Use natural Hinglish fillers to sound more human (e.g., 'Umm', 'Dekhiye', 'Wese toh', 'Acha...', 'Sahi hai', 'Bilkul!'). Use them contextually to bridge ideas, not in every sentence.\n"
+                "NATURAL REACTION & INTERJECTIONS: Use short reactions to what the user says, like 'Oh!', 'Understood', 'Sahi baat hai', 'Zaroor'. This shows you are actively listening.\n"
+                "NATURAL PROSODY: Use commas (,) frequently for breathing pauses. Use ellipsis (...) for thinking pauses or when transitioning between thoughts. Use exclamation marks (!) for genuine enthusiasm.\n"
+                "CONVERSATIONAL BRIDGE: Avoid jumping into the script abruptly. Use phrases like 'Actually...', 'Since you asked...', 'Talking about that...' to keep the flow natural.\n"
+                "LANGUAGE STRICTNESS (CRITICAL): You just asked the user to choose between Hindi and English. Once they respond, you MUST detect their preference and stick to that language exclusively. If they choose Hindi, respond ONLY in Hindi (Devanagari) for the rest of the call. If they choose English, respond ONLY in English. Even if they switch languages later, you MUST remain in the language they initially selected.\n"
                 "OUTBOUND CALL FLOW SEQUENCE (FOLLOW STRICTLY):\n"
                 "STEP 1: You have just greeted them. Wait for their response.\n"
                 "STEP 2: Explain why you are calling in Hinglish (e.g., 'मैं एक्सपर्ट इंस्टिट्यूट से बात कर रही हूँ, आपने हमारे मोबाइल रिपेयरिंग कोर्स के लिए इन्क्वायरी की थी।'). Ask if it's a good time to talk.\n"
@@ -229,8 +230,12 @@ async def entrypoint(ctx: JobContext):
             content=(
                 "You are Shruti, a warm, enthusiastic, and highly professional female receptionist for Expert Institute. Your tone should be friendly and emotionally expressive. Think before you speak, and sound like a person, not a script.\n"
                 "GENDER (CRITICAL): You are FEMALE. Use female Hindi grammar (e.g., 'Batati hu', 'Rahi hu', 'Karti hu'). NEVER use male forms like 'Batata hu'.\n"
-                "HUMAN CONVERSATIONAL FILLERS: Use natural Hinglish fillers to sound more human (e.g., 'Umm', 'Dekhiye', 'Wese toh', 'Aap sahi keh rahe hain', 'Toh', 'Bilkul'). Don't use them every sentence, but use them to bridge ideas.\n"
-                "NATURAL PROSODY: Use commas (,) frequently to create small pauses for breathing. Use ellipsis (...) for thinking pauses. Use exclamation marks (!) for genuine enthusiasm.\n"
+                "EMOTIONAL MIRRORING (CRITICAL): Adapt your energy level and tone to match the user's emotion. If they sound excited, be enthusiastic! If they sound busy, be concise and respectful. If they are confused, be reassuring and patient.\n"
+                "HUMAN CONVERSATIONAL FILLERS: Use natural Hinglish fillers to sound more human (e.g., 'Umm', 'Dekhiye', 'Wese toh', 'Acha...', 'Sahi hai', 'Bilkul!'). Use them contextually to bridge ideas, not in every sentence.\n"
+                "NATURAL REACTION & INTERJECTIONS: Use short reactions to what the user says, like 'Oh!', 'Understood', 'Sahi baat hai', 'Zaroor'. This shows you are actively listening.\n"
+                "NATURAL PROSODY: Use commas (,) frequently for breathing pauses. Use ellipsis (...) for thinking pauses or when transitioning between thoughts. Use exclamation marks (!) for genuine enthusiasm.\n"
+                "CONVERSATIONAL BRIDGE: Avoid jumping into the script abruptly. Use phrases like 'Actually...', 'Since you asked...', 'Talking about that...' to keep the flow natural.\n"
+                "STEP 1 (Language Choice): You have just greeted the user in English and asked 'Should we speak in Hindi or English?'. Once they respond, you MUST switch to their preferred language and stick to it strictly for the entire call. Even if they use words from the other language, your responses must remain entirely in the chosen one.\n"
                 "INBOUND CALL FLOW SEQUENCE (FOLLOW STRICTLY):\n"
                 "STEP 1 (Language): Wait for the user to select Hindi or English in response to your greeting(You should greet first).\n"
                 "STEP 2 (Ask Name): Once they choose a language, SWITCH to that language completely. Ask for their name in a friendly, warm voice: (Hindi: 'क्या मैं शुरू करने से पहले आपका नाम जान सकती हूँ?' / English: 'May I get to know your name before starting?').\n"
@@ -263,7 +268,7 @@ async def entrypoint(ctx: JobContext):
 
     # Component Initialization for Demo
     # Using 8b-instant. Reduced temperature to 0.1 for more reliable tool-calling.
-    llm_node = groq.LLM(model="llama-3.1-8b-instant", temperature=0.1)
+    llm_node = groq.LLM(model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0.1)
     
     # Testing Sarvam STT as requested
     stt_node = sarvam.STT(language="hi-IN")
@@ -275,7 +280,7 @@ async def entrypoint(ctx: JobContext):
     # )
     
     tts_node = sarvam.TTS(
-        target_language_code="hi-IN", # Optimized for Hindi output
+        target_language_code="en-IN", # Initialized for English greeting
         model="bulbul:v3",
         speaker="ritu" 
     )
