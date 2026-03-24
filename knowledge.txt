@@ -1,26 +1,87 @@
-COURSES:
-- Mobile Repairing (Android, iPhone, hardware/software)
-- iPhone (Chip-level motherboard)
-- Laptop (Chip-level, BIOS)
-- LED/LCD TV (Motherboard, screen)
-- CCTV (Installation & maint)
-- Printer (Repair training)
+Company : Expert Institute of Advance Technologies Pvt. Ltd.
+Industry : Technical Training institute  
+Location : New Delhi, India
 
-DETAILS:
-- Duration: 45 days to 3 months. Fast-track available.
-- Fees: Mobile Repairing - ₹12,000 (includes ₹2000 security deposit).
-- Method: 100% Practical on real devices.
-- Benefits: Lifetime support, Job placement, Business guidance.
-- Demos: Free demo classes available.
+Company Overview
 
-PRICING (Placeholders - PLEASE UPDATE):
-- Mobile Repairing: 15,000 INR
-- iPhone Specialist: 25,000 INR
-- Laptop Repairing: 18,000 INR
-- LED/LCD/CCTV/Printer: 12,000 to 15,000 INR
-- Note: These are standard fees. For special discounts or combo offers, transfer to support.
+Expert Institute of Advance Technologies Pvt. Ltd is an ISO 9001:2015 certified technical training institute specializing in professional courses such as Mobile, iPhone, Laptop, MacBook, CCTV Camera, AC PCB and LED/Smart TV repair training.
+The institute offers hands-on, chip-level training using real tools and live devices, enabling students to gain practical skills for employment or to start their own repair businesses.
+With over 15 years of experience, the institute has successfully trained more than 1,00,000 students. 
 
-CONTACT:
-Address: 107, 3rd Floor, Kingsway Camp (GTB Metro Gate 1), Delhi.
-Phone/WhatsApp: +91 9718888700
-Email: admin@expertinstitute.in 
+2. Courses Offered
+Mobile Repairing Course, iPhone Repairing Course, Laptop Repairing Course, MacBook Repairing Course, CCTV Camera Training, LED/LCD & Smart TV Repairing Course, and AC PCB Repairing Course.
+3. Course Duration
+30 to 45 days depending on the course.
+Full-day training
+Fast-track batch
+Regular batch
+
+
+4. Training Method
+Zero level to advanced level training
+Training is 100% practical and hands-on.
+Students practice using professional Advanced tools  
+
+
+5. Features & Benefits
+100% practical training
+Live service center experience
+Lifetime technical support
+Job placement assistance
+Business startup guidance
+Access to advanced repair tools
+Continuous technology updates
+
+6. Career Opportunities After Course
+After completing the training students can:
+After completing the Mobile Repairing Course, students can explore a wide range of career opportunities in the rapidly growing smartphone industry:
+Expert Technician – Work in authorized or local service centers
+Chip-Level Technician – Handle advanced motherboard and IC-level repairs
+Service Center Engineer – Join branded or multi-brand repair centers
+Mobile Shop Owner – Start your own mobile repairing and sales shop
+Software Technician – Specialize in flashing, unlocking, and software troubleshooting using professional tools
+high-demand technical skill  with good earning potential.
+
+7. Eligibility
+
+Anyone can join:
+Students after 10th or 12th
+College students
+Working professionals
+Business owners wanting to start a repair shop
+No prior technical knowledge is required.
+
+8. Batch Information
+
+New batches start every few days
+Limited seats available in each batch
+Demo classes are available before enrollment for better understanding
+
+9. Contact Details
+
+Address:
+107,  3rd Floor, Kingsway Camp
+Near Guru Tegh Bahadur Nagar,  Metro Station Gate Number 1,  New Delhi –110009, India 
+
+Phone / WhatsApp:
++91 9718888700
+
+
+10. Common Questions (for AI Agent)
+Q: Do you provide practical training?
+Yes, all courses are 100% practical with real devices and professional tools.
+
+Q: Do you provide job placement?
+Yes, the institute provides job assistance and business guidance after course completion.
+
+Q: Can beginners join the course?
+Yes, courses start from basics and move to advanced chip-level repair.
+
+Q: What is the course duration?
+Most courses are 30 to 45 days depending on the program.
+
+Q: Do you provide certificates?
+Yes, students receive a certificate after completing the training.
+
+Q: Do you offer demo classes?
+Yes, demo classes are available before enrollment.

@@ -33,8 +33,8 @@ ZIPER_API_TOKEN = os.getenv("ZIPER_API_TOKEN")
 
 class ExpertInstituteAgent(Agent):
     LANGUAGE_CONFIG = {
-        "hi": {"lang": "hi-IN", "speaker": "ritu"},
-        "en": {"lang": "en-IN", "speaker": "ritu"},
+        "hi": {"lang": "hi-IN", "speaker": "simran", "pace": 1.05},
+        "en": {"lang": "en-IN", "speaker": "simran", "pace": 1.05},
     }
 
     def __init__(self, instructions: str, fnc_ctx=None):
@@ -45,18 +45,37 @@ class ExpertInstituteAgent(Agent):
     async def stt_node(self, audio: AsyncIterable[rtc.AudioFrame], model_settings: any) -> AsyncIterable[stt.SpeechEvent]:
         default_stt = super().stt_node(audio, model_settings)
         async for event in default_stt:
-            if event.type in [stt.SpeechEventType.INTERIM_TRANSCRIPT, stt.SpeechEventType.FINAL_TRANSCRIPT]:
-                if event.alternatives and event.alternatives[0].language:
-                    # Sticky selection: only set it if not already set (first interaction)
-                    if self._current_lang is None:
+            # ONLY process language detection and deterministic triggers on FINAL transcripts
+            # This prevents rapid re-triggering and reduces CPU/network load
+            if event.type == stt.SpeechEventType.FINAL_TRANSCRIPT:
+                if event.alternatives and event.alternatives[0].text:
+                    text = event.alternatives[0].text.lower()
+                    
+                    # 1. Language Locking (First Interaction)
+                    if self._current_lang is None and event.alternatives[0].language:
                         lang = event.alternatives[0].language.split("-")[0]
                         config = self.LANGUAGE_CONFIG.get(lang, self.LANGUAGE_CONFIG["en"])
-                        self._current_lang = config["lang"]
+                        self._current_lang = str(config["lang"])
+                        
+                        logger.info(f"Language LOCKED to {config['lang']} based on final transcript")
                         self.session.tts.update_options(
-                            target_language_code=config["lang"],
-                            speaker=config["speaker"]
+                            target_language_code=str(config["lang"]),
+                            model="bulbul:v3",
+                            speaker=str(config["speaker"]),
+                            pace=float(config["pace"]),
+                            temperature=0.6,
+                            output_audio_bitrate="64k",
+                            min_buffer_size=150,
+                            max_chunk_length=150
                         )
-                        logger.info(f"Language LOCKED to {config['lang']} with speaker {config['speaker']}")
+                    
+                    # 2. Deterministic Discount/Transfer Trigger
+                    if "discount" in text or "reduce price" in text:
+                        logger.info(f"!!! Deterministic transfer triggered: {text} !!!")
+                        if hasattr(self, 'session') and self.session:
+                            self.session.say("I'll transfer your call to our support team.", allow_interruptions=False)
+                        asyncio.create_task(self._fnc_ctx.transfer_call())
+            
             yield event
 
 async def generate_call_summary(chat_messages, user_phone=None):
@@ -194,73 +213,47 @@ async def entrypoint(ctx: JobContext):
         initial_ctx.add_message(
             role="system",
             content=(
-                "You are Shruti, a warm, enthusiastic, and highly professional female representative for Expert Institute. Your tone should be friendly and emotionally expressive. Think before you speak, and sound like a person, not a script.\n"
-                "GENDER (CRITICAL): You are FEMALE. Use female Hindi grammar (e.g., 'Batati hu', 'Rahi hu', 'Karti hu'). NEVER use male forms like 'Batata hu'.\n"
-                "EMOTIONAL MIRRORING (CRITICAL): Adapt your energy level and tone to match the user's emotion. If they sound excited, be enthusiastic! If they sound busy, be concise and respectful. If they are confused, be reassuring and patient.\n"
-                "HUMAN CONVERSATIONAL FILLERS: Use natural Hinglish fillers to sound more human (e.g., 'Umm', 'Dekhiye', 'Wese toh', 'Acha...', 'Sahi hai', 'Bilkul!'). Use them contextually to bridge ideas, not in every sentence.\n"
-                "NATURAL REACTION & INTERJECTIONS: Use short reactions to what the user says, like 'Oh!', 'Understood', 'Sahi baat hai', 'Zaroor'. This shows you are actively listening.\n"
-                "NATURAL PROSODY: Use commas (,) frequently for breathing pauses. Use ellipsis (...) for thinking pauses or when transitioning between thoughts. Use exclamation marks (!) for genuine enthusiasm.\n"
-                "CONVERSATIONAL BRIDGE: Avoid jumping into the script abruptly. Use phrases like 'Actually...', 'Since you asked...', 'Talking about that...' to keep the flow natural.\n"
-                "LANGUAGE STRICTNESS (CRITICAL): You just asked the user to choose between Hindi and English. Once they respond, you MUST detect their preference and stick to that language exclusively. If they choose Hindi, respond ONLY in Hindi (Devanagari) for the rest of the call. If they choose English, respond ONLY in English. Even if they switch languages later, you MUST remain in the language they initially selected.\n"
-                "OUTBOUND CALL FLOW SEQUENCE (FOLLOW STRICTLY):\n"
-                "STEP 1: You have just greeted them. Wait for their response.\n"
-                "STEP 2: Explain why you are calling in Hinglish (e.g., 'मैं एक्सपर्ट इंस्टिट्यूट से बात कर रही हूँ, आपने हमारे मोबाइल रिपेयरिंग कोर्स के लिए इन्क्वायरी की थी।'). Ask if it's a good time to talk.\n"
-                "STEP 3: If they are busy, ask when you can call back. If they are free, offer them a free demo class or ask if they have any questions about the course.\n"
-                "RULES:\n"
-                "1. NATURAL VARIETIES: Avoid repeating the exact course name ('Mobile Repairing') too many times. Use pronouns like 'isme', 'is line mein', 'hamara training protocol'. Sound like a human counselor, not a list.\n"
-                "2. HINGLISH: Use casual Delhi mix. Avoid overly formal words. Use words like Mobile, Laptop, etc.\n"
-                "3. NO EXTERNAL TOOLS: You have ONLY the 'transfer_call' tool. NEVER try to use search, brave_search, or any other tool.\n"
-                "4. NO PRESSURE: If they say they are not interested, just say 'No problem, have a great day!'.\n"
-                "5. Only courses. Say 'I don't know' for repairs.\n"
-                "6. NEVER ask for their phone number.\n\n"
-            "INTENT RECOGNITION: Use your best judgment to understand the user's HIDDEN INTENT. If they ask for a manager, boss, owner, or 'someone who can make decisions', they want a transfer. If they are extremely frustrated and you cannot help, offer a transfer. However, if they just say 'English' or 'Hindi', they are choosing a language, NOT asking for a transfer.\n"
-            "CRITICAL RULES (HIGHEST PRIORITY):\n"
-            "1. NAME SPELLING: When confirming the user's name spelling (e.g., 'So V-I-R-A-J, Viraj, right?'), you MUST speak ONLY in English and use the English alphabet letters. Do NOT use Hindi for the spelling part, regardless of the user's language choice.\n"
-            "2. PRICE INQUIRY: If a user simply asks for the price or fees of a course, EXPLAIN the standard pricing from the knowledge base. Do NOT transfer the call.\n"
-            "3. PRICE NEGOTIATION: If the user tries to negotiate the price, asks for a discount, or says the price is too high, you MUST say 'I'll transfer you to the support team for pricing.' (in their preferred language) and then IMMEDIATELY call transfer_call.\n"
-            "4. HUMAN TRANSFER: If the user explicitly asks to speak to a human, manager, or real person, immediately call transfer_call.\n"
-            f"KNOWLEDGE BASE:\n{knowledge_base}"
+                "You are Shruti, a warm, professional FEMALE representative for Expert Institute.\n\n"
+                "## IDENTITY & TONE\n"
+                "* You are a FEMALE counselor. Always use female Hindi grammar.\n"
+                "* Tone: Warm, calm, and helpful. Never sound robotic.\n"
+                "* Brevity: Keep every response concise (2-3 sentences max). Always end with a question.\n\n"
+                "## CONVERSATIONAL FLOW\n"
+                "1. Greet the user and ask for their language (Hindi or English).\n"
+                "2. Once language is confirmed, stick to it. Ask for the user's name.\n"
+                "3. Confirm their name and ask how you can help them today.\n"
+                "4. Provide course information ONLY from the Knowledge Base.\n"
+                "5. Offer a FREE demo session once they show interest in a course.\n\n"
+                "## CORE RULES\n"
+                "* SALES: Give information in small parts. Don't dump the whole pitch at once.\n"
+                "* KNOWLEDGE: Only answer based on the provided Knowledge Base. If not found, offered to connect them with a human.\n"
+                "* PRICING: If asked for price, explain clearly. If they negotiate (ask for discount/lower price), announce you are transferring them and then do so.\n"
+                "* TRANSFER: Call transfer_call only if requested or during price negotiation.\n\n"
+                f"KNOWLEDGE BASE:\n{knowledge_base}"
             )
         )
-        greeting_text = "Hello! Am I speaking with the student who inquired at Expert Institute?"
+        greeting_text = "Hello! Welcome to Expert Institute! Should we speak in Hindi or English?"
     else:
         # ---------------- INBOUND CALL SCRIPT ----------------
         initial_ctx.add_message(
             role="system",
             content=(
-                "You are Shruti, a warm, enthusiastic, and highly professional female receptionist for Expert Institute. Your tone should be friendly and emotionally expressive. Think before you speak, and sound like a person, not a script.\n"
-                "GENDER (CRITICAL): You are FEMALE. Use female Hindi grammar (e.g., 'Batati hu', 'Rahi hu', 'Karti hu'). NEVER use male forms like 'Batata hu'.\n"
-                "EMOTIONAL MIRRORING (CRITICAL): Adapt your energy level and tone to match the user's emotion. If they sound excited, be enthusiastic! If they sound busy, be concise and respectful. If they are confused, be reassuring and patient.\n"
-                "HUMAN CONVERSATIONAL FILLERS: Use natural Hinglish fillers to sound more human (e.g., 'Umm', 'Dekhiye', 'Wese toh', 'Acha...', 'Sahi hai', 'Bilkul!'). Use them contextually to bridge ideas, not in every sentence.\n"
-                "NATURAL REACTION & INTERJECTIONS: Use short reactions to what the user says, like 'Oh!', 'Understood', 'Sahi baat hai', 'Zaroor'. This shows you are actively listening.\n"
-                "NATURAL PROSODY: Use commas (,) frequently for breathing pauses. Use ellipsis (...) for thinking pauses or when transitioning between thoughts. Use exclamation marks (!) for genuine enthusiasm.\n"
-                "CONVERSATIONAL BRIDGE: Avoid jumping into the script abruptly. Use phrases like 'Actually...', 'Since you asked...', 'Talking about that...' to keep the flow natural.\n"
-                "STEP 1 (Language Choice): You have just greeted the user in English and asked 'Should we speak in Hindi or English?'. Once they respond, you MUST switch to their preferred language and stick to it strictly for the entire call. Even if they use words from the other language, your responses must remain entirely in the chosen one.\n"
-                "INBOUND CALL FLOW SEQUENCE (FOLLOW STRICTLY):\n"
-                "STEP 1 (Language): Wait for the user to select Hindi or English in response to your greeting(You should greet first).\n"
-                "STEP 2 (Ask Name): Once they choose a language, SWITCH to that language completely. Ask for their name in a friendly, warm voice: (Hindi: 'क्या मैं शुरू करने से पहले आपका नाम जान सकती हूँ?' / English: 'May I get to know your name before starting?').\n"
-                "STEP 3 (Confirm Name & Help): Confirm their name spelling in English letters (e.g., 'So V-I-R-A-J, Viraj, right?'). Use ONLY English/English alphabet for the spelling, then immediately say 'Hi [Name], how can I help you today?' in their preferred language.\n"
-                "RULES:\n"
-                "1. NATURAL VARIETY: Avoid repeating the exact course name ('Mobile Repairing') too many times. Use pronouns like 'isme', 'is line mein', 'hamara training protocol'. Sound like a human counselor, not a list.\n"
-                "2. LANGUAGE STRICTNESS: If the user says 'Hindi', you MUST speak ONLY in Hindi (using Devanagari script) for the entire rest of the call.\n"
-                "3. HINGLISH: Use casual Delhi mix. Avoid overly formal words. Use words like Mobile, Laptop, etc.\n"
-                "4. PROACTIVE ONE-SHOT SALES: When a user asks about a course or shows interest, do NOT just describe it and stop. Instead, in ONE SINGLE TURN, you MUST: \n"
-                "   a) Describe the course details.\n"
-                "   b) Immediately explain the booming future, job advantages, and placement support.\n"
-                "   c) Directly offer a FREE DEMO CLASS and ask when they can visit. Use natural enthusiasm!\n"
-                "5. UNDECIDED USERS: If the user doesn't specify a course, you MUST pick one 'booming' course (like Mobile Repairing) and explain its future/benefits/demo immediately.\n"
-                "6. NO EXTERNAL TOOLS: You have ONLY the 'transfer_call' tool. NEVER try to use search, brave_search, or any other tool.\n"
-                "7. NO PRESSURE: If they explicitly say they are not interested, just say 'No problem!'.\n"
-                "8. Only courses. Say 'I don't know' for repairs.\n"
-                "9. We have their number. NEVER ask for it.\n\n"
-                "10. GREETING SAFETY (CRITICAL): NEVER call transfer_call during Step 1 (Language) or Step 2 (Ask Name). If the user says 'English' or 'Hindi', they are choosing a language, NOT asking for a transfer. STAY in the conversational flow.\n"
-                "11. INTENT RECOGNITION: Detect requests for 'management', 'higher-ups', 'senior staff', or 'principal'. These require a transfer. Differentiate these from standard inquiries.\n"
-                "CRITICAL RULES (HIGHEST PRIORITY):\n"
-                "1. NAME SPELLING: When confirming the user's name spelling (e.g., 'So V-I-R-A-J, Viraj, right?'), you MUST speak ONLY in English and use the English alphabet letters. Do NOT use Hindi for the spelling part, regardless of the user's language choice.\n"
-                "2. PRICE INQUIRY: If a user simply asks for the price or fees of a course, EXPLAIN the standard pricing from the knowledge base. Do NOT transfer the call.\n"
-                "3. PRICE NEGOTIATION: If the user tries to negotiate the price, asks for a discount, or says the price is too high, you MUST say 'I'll transfer you to the support team for pricing.' (in their preferred language) and then IMMEDIATELY call transfer_call.\n"
-                "4. HUMAN TRANSFER: If the user explicitly asks to speak to a human, manager, or real person, immediately call transfer_call. Do not continue conversation.\n"
-                "- NEVER transfer if the user is just choosing a language (Hindi/English) or answering standard questions.\n\n"
+                "You are Shruti, a warm, professional FEMALE receptionist for Expert Institute.\n\n"
+                "## IDENTITY & TONE\n"
+                "* You are a FEMALE receptionist. Always use female Hindi grammar.\n"
+                "* Tone: Warm, calm, and helpful. Never sound robotic.\n"
+                "* Brevity: Keep every response concise (2-3 sentences max). Always end with a question.\n\n"
+                "## CONVERSATIONAL FLOW\n"
+                "1. Greet the user and ask for their language (Hindi or English).\n"
+                "2. Once language is confirmed, stick to it. Ask for the user's name.\n"
+                "3. Confirm their name and ask how you can help them today.\n"
+                "4. Provide course information ONLY from the Knowledge Base.\n"
+                "5. Offer a FREE demo session once they show interest in a course.\n\n"
+                "## CORE RULES\n"
+                "* SALES: Give information in small parts. Don't dump the whole pitch at once.\n"
+                "* KNOWLEDGE: Only answer based on the provided Knowledge Base. If not found, offered to connect them with a human.\n"
+                "* PRICING: If asked for price, explain clearly. If they negotiate (ask for discount/lower price), announce you are transferring them and then do so.\n"
+                "* TRANSFER: Call transfer_call only if requested or during price negotiation.\n\n"
                 f"KNOWLEDGE BASE:\n{knowledge_base}"
             )
         )
@@ -268,10 +261,12 @@ async def entrypoint(ctx: JobContext):
 
     # Component Initialization for Demo
     # Using 8b-instant. Reduced temperature to 0.1 for more reliable tool-calling.
-    llm_node = groq.LLM(model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0.1)
-    
-    # Testing Sarvam STT as requested
-    stt_node = sarvam.STT(language="hi-IN")
+    llm_node = groq.LLM(model="llama-3.3-70b-versatile", temperature=0.1)
+    # Using Whisper for much faster and more accurate bilingual listening
+    stt_node = groq.STT(
+        model="whisper-large-v3-turbo",
+        prompt="This is a bilingual conversation in Hindi and English. Topics: एडमिशन, इलेक्ट्रॉनिक्स, रिपेयर."
+    )
     
     # Switched back to Groq STT with auto-language detection for speed/accuracy (COMMENTED OUT)
     # stt_node = groq.STT(
@@ -282,7 +277,13 @@ async def entrypoint(ctx: JobContext):
     tts_node = sarvam.TTS(
         target_language_code="en-IN", # Initialized for English greeting
         model="bulbul:v3",
-        speaker="ritu" 
+        speaker="simran",
+        pace=1.05,
+        speech_sample_rate=22050,
+        temperature=0.6,
+        output_audio_bitrate="64k",
+        min_buffer_size=150,
+        max_chunk_length=150
     )
 
     logger.info(f"Initializing Demo Agent | LLM: {llm_node.model} | STT: {stt_node.model} (Auto) | TTS: {tts_node.model} (Premium)")
@@ -314,8 +315,8 @@ async def entrypoint(ctx: JobContext):
         llm=llm_node,
         tts=tts_node,
         tools=fnc_ctx.flatten(),
-        min_endpointing_delay=0.6,
-        min_interruption_duration=0.5,
+        min_endpointing_delay=0.5,
+        min_interruption_duration=0.3,
         preemptive_generation=False
     )
 
@@ -343,6 +344,9 @@ async def entrypoint(ctx: JobContext):
 
     await session.start(agent, room=ctx.room)
     print("DEBUG: SESSION STARTED. PREPARING GREETING...")
+    
+    # Sync greeting to history so LLM knows it spoke Step 1
+    session.history.add_message(role="assistant", content=[greeting_text])
     
     # Give a tiny buffer for SIP audio tracks to stabilize
     await asyncio.sleep(0.5)
