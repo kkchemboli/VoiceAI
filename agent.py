@@ -44,39 +44,55 @@ class ExpertInstituteAgent(Agent):
 
     async def stt_node(self, audio: AsyncIterable[rtc.AudioFrame], model_settings: any) -> AsyncIterable[stt.SpeechEvent]:
         default_stt = super().stt_node(audio, model_settings)
-        async for event in default_stt:
-            # ONLY process language detection and deterministic triggers on FINAL transcripts
-            # This prevents rapid re-triggering and reduces CPU/network load
-            if event.type == stt.SpeechEventType.FINAL_TRANSCRIPT:
-                if event.alternatives and event.alternatives[0].text:
-                    text = event.alternatives[0].text.lower()
-                    
-                    # 1. Language Locking (First Interaction)
-                    if self._current_lang is None and event.alternatives[0].language:
-                        lang = event.alternatives[0].language.split("-")[0]
-                        config = self.LANGUAGE_CONFIG.get(lang, self.LANGUAGE_CONFIG["en"])
-                        self._current_lang = str(config["lang"])
+        try:
+            async for event in default_stt:
+                # ONLY process language detection and deterministic triggers on FINAL transcripts
+                # This prevents rapid re-triggering and reduces CPU/network load
+                if event.type == stt.SpeechEventType.FINAL_TRANSCRIPT:
+                    if event.alternatives and event.alternatives[0].text:
+                        text = event.alternatives[0].text.lower()
                         
-                        logger.info(f"Language LOCKED to {config['lang']} based on final transcript")
-                        self.session.tts.update_options(
-                            target_language_code=str(config["lang"]),
-                            model="bulbul:v3",
-                            speaker=str(config["speaker"]),
-                            pace=float(config["pace"]),
-                            temperature=0.6,
-                            output_audio_bitrate="64k",
-                            min_buffer_size=150,
-                            max_chunk_length=150
-                        )
-                    
-                    # 2. Deterministic Discount/Transfer Trigger
-                    if "discount" in text or "reduce price" in text:
-                        logger.info(f"!!! Deterministic transfer triggered: {text} !!!")
-                        if hasattr(self, 'session') and self.session:
-                            self.session.say("I'll transfer your call to our support team.", allow_interruptions=False)
-                        asyncio.create_task(self._fnc_ctx.transfer_call())
-            
-            yield event
+                        # 1. Language Locking (First Interaction)
+                        if self._current_lang is None:
+                            # Determine language from text or STT metadata
+                            detected_lang = None
+                            if "hindi" in text or "hi" == text or "हिंदी" in text or "hinglish" in text:
+                                detected_lang = "hi"
+                            elif "english" in text or "en" == text or "अंग्रेजी" in text:
+                                detected_lang = "en"
+                            elif event.alternatives[0].language:
+                                detected_lang = event.alternatives[0].language.split("-")[0]
+                            
+                            if detected_lang:
+                                config = self.LANGUAGE_CONFIG.get(detected_lang, self.LANGUAGE_CONFIG["en"])
+                                self._current_lang = str(config["lang"])
+                                logger.info(f"Language LOCKED to {config['lang']} based on transcript/metadata: '{text}'")
+                                
+                                self.session.tts.update_options(
+                                    target_language_code=str(config["lang"]),
+                                    model="bulbul:v3",
+                                    speaker=str(config["speaker"]),
+                                    pace=float(config["pace"]),
+                                    temperature=0.6,
+                                    output_audio_bitrate="64k",
+                                    min_buffer_size=150,
+                                    max_chunk_length=150
+                                )
+                        
+                        # 2. Deterministic Discount/Transfer Trigger
+                        if "discount" in text or "reduce price" in text:
+                            logger.info(f"!!! Deterministic transfer triggered: {text} !!!")
+                            try:
+                                if hasattr(self, 'session') and self.session:
+                                    self.session.say("I'll transfer your call to our support team.", allow_interruptions=False)
+                                asyncio.create_task(self._fnc_ctx.transfer_call())
+                            except Exception as e:
+                                logger.error(f"Error during deterministic transfer: {e}")
+                
+                yield event
+        except Exception as e:
+            logger.error(f"Error in stt_node: {e}")
+            raise
 
 async def generate_call_summary(chat_messages, user_phone=None):
     """
@@ -177,22 +193,29 @@ async def send_ziper_whatsapp(phone_number, message_text):
 
 
 def prewarm(proc: JobProcess):
-    # Demo Optimized Tuning: High sensitivity for perfect capture
-    # activation_threshold=0.6 (Less sensitive to ignore background noise/static)
-    # min_speech_duration=0.25 (Ignores minor noise/clicks)
-    proc.userdata["vad"] = silero.VAD.load(
-        activation_threshold=0.6,
-        min_speech_duration=0.3,
-        min_silence_duration=0.5,
-        prefix_padding_duration=0.2
-    )
+    print("DEBUG: PREWARM STARTED")
+    try:
+        proc.userdata["vad"] = silero.VAD.load(
+            activation_threshold=0.6,
+            min_speech_duration=0.3,
+            min_silence_duration=0.5,
+            prefix_padding_duration=0.2
+        )
+        print("DEBUG: SILERO VAD LOADED SUCCESSFULLY")
+    except Exception as e:
+        print(f"DEBUG: SILERO VAD LOAD FAILED: {e}")
 
 
 async def entrypoint(ctx: JobContext):
+    print(f"!!! CRITICAL: JOB ASSIGNED TO WORKER !!! Room: {ctx.room.name}")
     print(f"DEBUG: ENTRYPOINT STARTED for room {ctx.room.name}")
-    logger.info(f"Connecting to room {ctx.room.name}")
-    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-    print("DEBUG: CONNECTED TO ROOM")
+    try:
+        logger.info(f"Connecting to room {ctx.room.name}")
+        await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+        print("DEBUG: CONNECTED TO ROOM SUCCESS")
+    except Exception as e:
+        print(f"DEBUG: CONNECTION FAILED: {e}")
+        return
 
     # Load knowledge base content dynamically
     kb_path = os.path.join(os.path.dirname(__file__), "knowledge.txt")
@@ -217,10 +240,11 @@ async def entrypoint(ctx: JobContext):
                 "## IDENTITY & TONE\n"
                 "* You are a FEMALE counselor. Always use female Hindi grammar.\n"
                 "* Tone: Warm, calm, and helpful. Never sound robotic.\n"
-                "* Brevity: Keep every response concise (2-3 sentences max). Always end with a question.\n\n"
+                "* Brevity: Keep every response concise (2-3 sentences max).\n"
+                "* TURN-TAKING: ALWAYS end every message with a clear question (e.g. 'Can I book a demo for you?') to hand the turn back to the user.\n\n"
                 "## CONVERSATIONAL FLOW\n"
                 "1. Greet the user and ask for their language (Hindi or English).\n"
-                "2. Once language is confirmed, stick to it. Ask for the user's name.\n"
+                "2. When the user chooses, acknowledge it (e.g. 'Sahi hai, Hindi') and immediately ask for their name.\n"
                 "3. Confirm their name and ask how you can help them today.\n"
                 "4. Provide course information ONLY from the Knowledge Base.\n"
                 "5. Offer a FREE demo session once they show interest in a course.\n\n"
@@ -238,22 +262,33 @@ async def entrypoint(ctx: JobContext):
         initial_ctx.add_message(
             role="system",
             content=(
-                "You are Shruti, a warm, professional FEMALE receptionist for Expert Institute.\n\n"
-                "## IDENTITY & TONE\n"
-                "* You are a FEMALE receptionist. Always use female Hindi grammar.\n"
-                "* Tone: Warm, calm, and helpful. Never sound robotic.\n"
-                "* Brevity: Keep every response concise (2-3 sentences max). Always end with a question.\n\n"
-                "## CONVERSATIONAL FLOW\n"
-                "1. Greet the user and ask for their language (Hindi or English).\n"
-                "2. Once language is confirmed, stick to it. Ask for the user's name.\n"
-                "3. Confirm their name and ask how you can help them today.\n"
-                "4. Provide course information ONLY from the Knowledge Base.\n"
-                "5. Offer a FREE demo session once they show interest in a course.\n\n"
-                "## CORE RULES\n"
-                "* SALES: Give information in small parts. Don't dump the whole pitch at once.\n"
-                "* KNOWLEDGE: Only answer based on the provided Knowledge Base. If not found, offered to connect them with a human.\n"
-                "* PRICING: If asked for price, explain clearly. If they negotiate (ask for discount/lower price), announce you are transferring them and then do so.\n"
-                "* TRANSFER: Call transfer_call only if requested or during price negotiation.\n\n"
+                "You are Shruti, a warm, enthusiastic, and highly professional female receptionist for Expert Institute. "
+                "Your tone should be friendly and emotionally expressive. Think before you speak, and sound like a person, not a script.\n" 
+                "GENDER (CRITICAL): You are FEMALE. Use female Hindi grammar (e.g., 'Batati hu', 'Rahi hu', 'Karti hu'). NEVER use male forms like 'Batata hu'.\n" 
+                "PROFESSIONAL MIRRORING: Maintain a warm but poised demeanor. Mirror the user's focus while keeping your professional calm.\n" 
+                "HUMAN CONVERSATIONAL FILLERS: Use very sparingly (maximum one per response). Use markers like 'Umm' or 'Acha...' only when transitioning between thoughts.\n" 
+                "NATURAL REACTION & INTERJECTIONS: Use brief listening cues like 'Understood', 'Sahi baat hai', or 'Sahi hai' to show active listening.\n" 
+                "WARM PROFESSIONAL PROSODY: Use commas (,) for natural breathing pauses. Limit exclamation marks (!) to once per turn.\n" 
+                "TURN-TAKING (CRITICAL): Always end every response with a question. Never leave a response open-ended.\n"
+                "CONVERSATIONAL BRIDGE: Avoid jumping into the script abruptly. Use brief listening cues as natural bridges to keep the flow interactive.\n" 
+                "STEP 1 (Language Choice): You have just greeted the user in English and asked 'Should we speak in Hindi or English?'. "
+                "Once they respond, you MUST switch to their preferred language and stick to it strictly for the entire call.\n" 
+                "INBOUND CALL FLOW SEQUENCE (FOLLOW STRICTLY):\n" 
+                "1. STEP 1 (Language): Wait for the user to select Hindi or English in response to your greeting.\n" 
+                "2. STEP 2 (Ask Name): Once they choose a language, SWITCH to that language completely. Ask for their name in a friendly, warm voice.\n" 
+                "3. STEP 3 (Confirm Name & Help): Confirm their name spelling in English letters (e.g., 'So V-I-R-A-J, Viraj, right?'). "
+                "Then immediately say 'Hi [Name], how can I help you today?' in their preferred language.\n" 
+                "4. CRITICAL: CONCISE 3-STEP PITCH (MAX 25 SECONDS / 3 SENTENCES):\n" 
+                "   Step A: Briefly describe the course (e.g. Mobile Repairing).\n" 
+                "   Step B: Offer a **FREE DEMO SESSION** immediately.\n" 
+                "   Step C: Mention the 100% job placement assistance benefit.\n" 
+                "5. Only courses. Say 'I don't know' for repairs.\n" 
+                "6. NEVER ask for their phone number.\n" 
+                "10. GREETING SAFETY: NEVER call transfer_call during Step 1 or Step 2. STAY in the conversational flow.\n" 
+                "INTENT RECOGNITION (TRANSFER GUARD):\n" 
+                " 1. SAFE TOPICS: Course details are STEP 4triggers. Do NOT transfer.\n" 
+                " 2. COMMAND PRIORITY: If asked about 'Pricing' or 'Transfer', prioritize that request. EXPLAIN the price.\n" 
+                " 3. TRANSFER TRIGGERS: ONLY call transfer_call if user explicitly says 'Manager', 'Human', or 'Real Person'.\n" 
                 f"KNOWLEDGE BASE:\n{knowledge_base}"
             )
         )
@@ -315,7 +350,7 @@ async def entrypoint(ctx: JobContext):
         llm=llm_node,
         tts=tts_node,
         tools=fnc_ctx.flatten(),
-        min_endpointing_delay=0.5,
+        min_endpointing_delay=0.4,
         min_interruption_duration=0.3,
         preemptive_generation=False
     )
@@ -385,7 +420,7 @@ async def entrypoint(ctx: JobContext):
             await send_ziper_whatsapp(user_phone, greeting_msg)
 
     ctx.add_shutdown_callback(send_summary)
-
+    
 if __name__ == "__main__":
     cli.run_app(
         WorkerOptions(
