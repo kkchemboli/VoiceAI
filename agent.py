@@ -17,6 +17,10 @@ from livekit.plugins import groq
 from livekit.plugins import sarvam
 from livekit.plugins import silero
 
+import datetime
+from zoneinfo import ZoneInfo
+from calendar_api import CalComCalendar, FakeCalendar, Calendar, SlotUnavailableError
+
 load_dotenv()
 logger = logging.getLogger("voice-agent")
 
@@ -134,11 +138,16 @@ async def entrypoint(ctx: JobContext):
             "1. Use back-channeling: occasionally say 'hmm' or 'right' while the user is explaining to show you are listening. "
             "2. Be concise: keep your turns short and punchy. "
             "3. Use natural pauses and verbal cues instead of formal lists.\n\n"
-            "PHASE 1: LANGUAGE SELECTION\n"
-            "At the start of the call, you must confirm the user's preferred language (English or Hindi). "
-            "Once the user chooses, strictly stick to that language for the rest of the conversation.\n\n"
-            "PHASE 2: INFORMATION GATHERING\n"
-            "Once the language is set, gather details about their needs (name, phone, course of interest) naturally.\n\n"
+            "PHASE 2: INFORMATION GATHERING AND COURSE EXPLANATION\n"
+            "1. Start by naturally gathering details about their needs and listing the courses available from the KNOWLEDGE BASE.\n"
+            "2. After listing the courses, ask the caller which course they are interested in.\n"
+            "3. Explain their chosen course in brief, explicitly mentioning how this course will benefit the caller.\n\n"
+            "PHASE 3: DEMO CLASS BOOKING\n"
+            "1. After the course explanation, ask the caller to attend a free demo class.\n"
+            "2. If the caller refuses, suggest they attend the demo class ONE MORE TIME.\n"
+            "3. If they refuse AGAIN, DO NOT force them any further. Simply ask how else you can help them.\n"
+            "4. If the caller AGREES to the demo class, ask them for their phone number, preferred date, and time slot.\n"
+            "5. To find time slots, call 'list_available_slots' and offer them a few options. Once they agree to a slot and provide their phone number, use 'schedule_demo_class' with the slot_id to book it.\n\n"
             "MULTILINGUAL & SCRIPT RULES:\n"
             "1. If the user chooses Hindi, you MUST respond in Hindi using Devanagari script (e.g., नमस्ते). "
             "2. If the user chooses English, respond in English. "
@@ -146,6 +155,59 @@ async def entrypoint(ctx: JobContext):
             f"KNOWLEDGE BASE:\n{knowledge_base}"
         ),
     )
+
+    # Calendar Initialization
+    timezone = "Asia/Kolkata"
+    tz_info = ZoneInfo(timezone)
+    if cal_api_key := os.getenv("CAL_API_KEY", None):
+        logger.info("CAL_API_KEY detected, using cal.com calendar")
+        cal = CalComCalendar(api_key=cal_api_key, timezone=timezone)
+    else:
+        logger.warning("CAL_API_KEY is not set. Falling back to FakeCalendar")
+        cal = FakeCalendar(timezone=timezone)
+    await cal.initialize()
+
+    _slots_map = {}
+
+    @llm.function_tool(description="Get available appointment slots for demo classes. Returns a list of slots, one per line. Use this to check availability.")
+    async def list_available_slots():
+        now = datetime.datetime.now(tz_info)
+        range_days = 30
+        lines = []
+        for slot in await cal.list_available_slots(
+            start_time=now, end_time=now + datetime.timedelta(days=range_days)
+        ):
+            local = slot.start_time.astimezone(tz_info)
+            lines.append(
+                f"slot_id: {slot.unique_hash} - {local.strftime('%A, %B %d, %Y')} at {local:%H:%M} {local.tzname()}"
+            )
+            _slots_map[slot.unique_hash] = slot
+            
+        if not lines:
+            return "No slots available at the moment."
+        return "\n".join(lines)
+
+    @llm.function_tool(description="Schedule a demo class appointment. Call this after the user agrees and provides phone number. Requires the slot_id from list_available_slots.")
+    async def schedule_demo_class(
+        slot_id: str,
+        phone_number: str,
+    ):
+        slot = _slots_map.get(slot_id)
+        if not slot:
+            return f"Error: Slot {slot_id} not found. Please list_available_slots again or ask the user for a valid time."
+        
+        try:
+            await cal.schedule_appointment(
+                start_time=slot.start_time, 
+                attendee_email=f"{phone_number}@example.com",
+                phone_number=phone_number
+            )
+        except SlotUnavailableError:
+            return "Error: This slot isn't available anymore."
+            
+        local = slot.start_time.astimezone(tz_info)
+        return f"Success: The appointment was scheduled for {local.strftime('%A, %B %d, %Y at %H:%M %Z')}."
+
 
     # Component Initialization for Demo
     # Temperature 0.7 for more spontaneous and human-like interaction
@@ -169,6 +231,7 @@ async def entrypoint(ctx: JobContext):
         llm=llm_node,
         stt=stt_node,
         tts=tts_node,
+        tools=[list_available_slots, schedule_demo_class],
     )
 
     # Create the session
