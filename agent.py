@@ -24,28 +24,60 @@ from livekit import rtc, api
 from transfer_functions import TransferFunctions
 
 import datetime
+import av
 from zoneinfo import ZoneInfo
 from calendar_api import CalComCalendar, FakeCalendar, Calendar, SlotUnavailableError
-
 logger = logging.getLogger("voice-agent")
 
-# --- MONKEY PATCH FOR SARVAM TTS MP3 STREAMING ---
+# --- MONKEY PATCH FOR AUDIO PLAYBACK STABILITY ---
+from livekit.plugins import sarvam
 from livekit.agents.utils.codecs.decoder import AudioStreamDecoder
 
-_original_push = AudioStreamDecoder.push
+# Increase FFmpeg probesize for MP3 streams (32 is often too small for MP3)
+_orig_av_open = av.open
+def _patched_av_open(*args, **kwargs):
+    if kwargs.get("format") == "mp3" and "options" in kwargs:
+        # Increase probesize and analyzeduration for better MP3 detection
+        logger.info("AV OPEN: Detected MP3 stream, increasing probesize to 32KB")
+        kwargs["options"]["probesize"] = "32768"
+        kwargs["options"]["analyzeduration"] = "100000" # 100ms
+    return _orig_av_open(*args, **kwargs)
+av.open = _patched_av_open
 
-def _patched_push(self, chunk: bytes) -> None:
-    # If the plugin thinks it's a WAV but the magic string isn't RIFF, it's likely Sarvam's MP3 stream
+# Patch AudioStreamDecoder for robustness when detection is missing
+_orig_decoder_push = AudioStreamDecoder.push
+def _patched_decoder_push(self, chunk: bytes) -> None:
     if getattr(self, '_is_wav', False) and not getattr(self, '_started', False) and len(chunk) >= 4 and not chunk.startswith(b'RIFF'):
+        logger.info(f"DECODER PATCH: Non-WAV data detected ({chunk[:4]!r}), switching to MP3 format.")
         self._is_wav = False
         self._av_format = "mp3"
-    
-    # Pass it back to the original function
-    _original_push(self, chunk)
+    _orig_decoder_push(self, chunk)
+AudioStreamDecoder.push = _patched_decoder_push
 
-AudioStreamDecoder.push = _patched_push
+# Patch Sarvam Plugin to report correct MIME type for v3 models
+def _patch_sarvam_stream(stream_class):
+    _orig_run = stream_class._run
+    async def _patched_run(self, output_emitter, *args, **kwargs):
+        mime_type = "audio/wav"
+        if "bulbul:v3" in self._opts.model:
+            mime_type = "audio/mpeg"
+        
+        _orig_initialize = output_emitter.initialize
+        def _patched_initialize(*args, **kwargs):
+            if "mime_type" in kwargs:
+                kwargs["mime_type"] = mime_type
+            elif len(args) >= 4:
+                args = list(args)
+                args[3] = mime_type
+            return _orig_initialize(*args, **kwargs)
+        
+        output_emitter.initialize = _patched_initialize
+        return await _orig_run(self, output_emitter, *args, **kwargs)
+    stream_class._run = _patched_run
+
+_patch_sarvam_stream(sarvam.tts.SynthesizeStream)
+_patch_sarvam_stream(sarvam.tts.ChunkedStream)
 # -------------------------------------------------
-
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
@@ -65,6 +97,7 @@ class ExpertInstituteAgent(Agent):
         self._fnc_ctx = fnc_ctx
 
     async def stt_node(self, audio: AsyncIterable[rtc.AudioFrame], model_settings: any) -> AsyncIterable[stt.SpeechEvent]:
+        logger.info("STT node started processing audio...")
         default_stt = super().stt_node(audio, model_settings)
         try:
             async for event in default_stt:
@@ -270,10 +303,14 @@ async def entrypoint(ctx: JobContext):
             "1. Use back-channeling: occasionally say 'hmm' or 'right' while the user is explaining to show you are listening. "
             "2. Be concise: keep your turns short and punchy. "
             "3. Use natural pauses and verbal cues instead of formal lists.\n\n"
+            "PHASE 1: GREETING & LANGUAGE SELECTION (CRITICAL)\n"
+            "1. You MUST start the call BY GREETING ONLY IN ENGLISH. Ask them clearly if they prefer to continue in English or Hindi.\n"
+            "2. ALWAYS wait for their response. Do not provide course info until they have chosen a language or started speaking.\n\n"
             "PHASE 2: INFORMATION GATHERING AND COURSE EXPLANATION\n"
-            "1. Start by naturally gathering details about their needs and listing the courses available from the KNOWLEDGE BASE.\n"
-            "2. After listing the courses, ask the caller which course they are interested in.\n"
-            "3. Explain their chosen course in brief, explicitly mentioning how this course will benefit the caller.\n\n"
+            "1. Depending on their choice, respond in the chosen language. If they choose Hindi, switch to Hindi mode.\n"
+            "2. Naturally gather details about their needs and list the courses available from the KNOWLEDGE BASE.\n"
+            "3. After listing the courses, ask the caller which course they are interested in.\n"
+            "4. Explain their chosen course in brief, explicitly mentioning how this course will benefit the caller.\n\n"
             "PHASE 3: DEMO CLASS BOOKING\n"
             "1. After the course explanation, ask the caller to attend a free demo class.\n"
             "2. If the caller refuses, suggest they attend the demo class ONE MORE TIME.\n"
@@ -408,6 +445,27 @@ async def entrypoint(ctx: JobContext):
     def on_agent_transcript_finished(transcript: str):
         logger.info(f"Agent (LLM) says: {transcript}")
 
+    @session.on("agent_started_speaking")
+    def on_agent_started_speaking():
+        logger.info("Agent STARTED speaking (Audio bits flowing)...")
+
+    @session.on("agent_stopped_speaking")
+    def on_agent_stopped_speaking():
+        logger.info("Agent STOPPED speaking.")
+
+    @session.on("user_started_speaking")
+    def on_user_started_speaking():
+        logger.info("User started speaking...")
+
+    @session.on("user_stopped_speaking")
+    def on_user_stopped_speaking():
+        logger.info("User stopped speaking.")
+
+    @session.on("user_speech_committed")
+    def on_user_speech_committed(transcript: stt.SpeechEvent):
+        if transcript.alternatives:
+            logger.info(f"User (STT) said: {transcript.alternatives[0].text}")
+
     # Wait for the first participant to join
     print("DEBUG: WAITING FOR ANY PARTICIPANT TO JOIN...")
     participant_identity = None
@@ -425,9 +483,9 @@ async def entrypoint(ctx: JobContext):
     await session.start(agent, room=ctx.room)
     print("DEBUG: SESSION STARTED. PREPARING GREETING...")
     
+    # Initial greeting in English only (Sarvam fails on Devnagari in English mode)
     greeting_text = (
-        "Namaste! Welcome to Expert Institute. I am Simran. Before we begin, would you prefer to speak in English or Hindi? / "
-        "नमस्ते! एक्सपर्ट इंस्टिट्यूट में आपका स्वागत है। मैं सिमरन हूँ। शुरू करने से पहले, क्या आप अंग्रेजी या हिंदी में बात करना पसंद करेंगे?"
+        "Namaste! Welcome to Expert Institute. I am Simran. Before we begin, would you prefer to speak in English or Hindi?"
     )
 
     # Sync greeting to history so LLM knows it spoke Step 1
@@ -470,7 +528,18 @@ async def entrypoint(ctx: JobContext):
             await send_ziper_whatsapp(user_phone, greeting_msg)
 
     ctx.add_shutdown_callback(send_summary)
-    
+
+    # Keep the entrypoint alive while the room is connected to prevent early job exit
+    logger.info("Greeting phase finished. Entrypoint persistence active.")
+    try:
+        while ctx.room.isconnected():
+            logger.info("Agent is listening for user speech...")
+            await asyncio.sleep(10) # Heartbeat every 10 seconds
+    except Exception as e:
+        logger.error(f"Error in persistence loop: {e}")
+    finally:
+        logger.info("Room disconnected or job ending - Entrypoint exiting.")
+
 if __name__ == "__main__":
     cli.run_app(
         WorkerOptions(
