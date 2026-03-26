@@ -29,6 +29,24 @@ from calendar_api import CalComCalendar, FakeCalendar, Calendar, SlotUnavailable
 
 logger = logging.getLogger("voice-agent")
 
+# --- MONKEY PATCH FOR SARVAM TTS MP3 STREAMING ---
+from livekit.agents.utils.codecs.decoder import AudioStreamDecoder
+
+_original_push = AudioStreamDecoder.push
+
+def _patched_push(self, chunk: bytes) -> None:
+    # If the plugin thinks it's a WAV but the magic string isn't RIFF, it's likely Sarvam's MP3 stream
+    if getattr(self, '_is_wav', False) and not getattr(self, '_started', False) and len(chunk) >= 4 and not chunk.startswith(b'RIFF'):
+        self._is_wav = False
+        self._av_format = "mp3"
+    
+    # Pass it back to the original function
+    _original_push(self, chunk)
+
+AudioStreamDecoder.push = _patched_push
+# -------------------------------------------------
+
+
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
