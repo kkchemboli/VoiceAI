@@ -445,11 +445,11 @@ async def entrypoint(ctx: JobContext):
 
     # Component Initialization for Demo
     # Using 8b-instant. Reduced temperature to 0.1 for more reliable tool-calling.
-    llm_node = groq.LLM(model="llama-3.1-8b-instant", temperature=0.1)
-    # Using Whisper for much faster and more accurate bilingual listening
-    stt_node = groq.STT(
-        model="whisper-large-v3-turbo",
-        prompt="This is a bilingual conversation in Hindi and English. Topics: एडमिशन, इलेक्ट्रॉनिक्स, रिपेयर.",
+    llm_node = groq.LLM(model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0.1)
+    # Using Sarvam Saaras v3 for high-quality localized STT with auto-detection
+    stt_node = sarvam.STT(
+        model="saaras:v3",
+        language="unknown",
     )
 
     tts_node = sarvam.TTS(
