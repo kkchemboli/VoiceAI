@@ -258,7 +258,7 @@ def prewarm(proc: JobProcess):
     print("DEBUG: PREWARM STARTED")
     try:
         proc.userdata["vad"] = silero.VAD.load(
-            activation_threshold=0.6,
+            activation_threshold=0.3,
             min_speech_duration=0.3,
             min_silence_duration=0.5,
             prefix_padding_duration=0.2
@@ -301,15 +301,15 @@ async def entrypoint(ctx: JobContext):
             "Keep your responses extremely engaging and concise. Do not use overly formal or robotic language.\n\n"
             "CONVERSATIONAL STYLE:\n"
             "1. Use back-channeling: occasionally say 'hmm' or 'right' while the user is explaining to show you are listening. "
-            "2. Be concise: keep your turns short and punchy. "
-            "3. Use natural pauses and verbal cues instead of formal lists.\n\n"
+            "2. Be concise: ALWAYS keep your turns short (under 150 characters per turn). "
+            "Never provide a full paragraph or multiple benefits in one go. Instead, explain ONE key benefit at a time and ask 'Would you like to hear more?' or 'Should I explain the fee structure next?'\n\n"
             "PHASE 1: GREETING & LANGUAGE SELECTION (CRITICAL)\n"
             "1. You MUST start the call BY GREETING ONLY IN ENGLISH. Ask them clearly if they prefer to continue in English or Hindi.\n"
-            "2. ALWAYS wait for their response. Do not provide course info until they have chosen a language or started speaking.\n\n"
+            "2. ALWAYS wait for their response. Do not provide course info until they have chosen a language.\n\n"
             "PHASE 2: INFORMATION GATHERING AND COURSE EXPLANATION\n"
-            "1. Depending on their choice, respond in the chosen language. If they choose Hindi, switch to Hindi mode.\n"
-            "2. Naturally gather details about their needs and list the courses available from the KNOWLEDGE BASE.\n"
-            "3. After listing the courses, ask the caller which course they are interested in.\n"
+            "1. Explain courses ONE sentence at a time to keep it engaging and conversational.\n"
+            "2. Naturally gather details about their needs and mention ONE course from the KNOWLEDGE BASE.\n"
+            "3. Ask 'Does this sound like something you are looking for?' before explaining further.\n"
             "4. Explain their chosen course in brief, explicitly mentioning how this course will benefit the caller.\n\n"
             "PHASE 3: DEMO CLASS BOOKING\n"
             "1. After the course explanation, ask the caller to attend a free demo class.\n"
