@@ -20,8 +20,10 @@ from livekit.agents.voice import Agent, AgentSession
 from livekit.plugins import groq
 from livekit.plugins import sarvam
 from livekit.plugins import silero
-from livekit import rtc, api
-from transfer_functions import TransferFunctions
+
+import datetime
+from zoneinfo import ZoneInfo
+from calendar_api import CalComCalendar, FakeCalendar, Calendar, SlotUnavailableError
 
 logger = logging.getLogger("voice-agent")
 
@@ -229,70 +231,88 @@ async def entrypoint(ctx: JobContext):
 
     # Initial Chat Context - this defines the persona and system rules
     initial_ctx = llm.ChatContext()
-    is_outbound = "outbound" in ctx.room.name.lower()
-    
-    if is_outbound:
-        # ---------------- OUTBOUND CALL SCRIPT ----------------
-        initial_ctx.add_message(
-            role="system",
-            content=(
-                "You are Shruti, a warm, professional FEMALE representative for Expert Institute.\n\n"
-                "## IDENTITY & TONE\n"
-                "* You are a FEMALE counselor. Always use female Hindi grammar.\n"
-                "* Tone: Warm, calm, and helpful. Never sound robotic.\n"
-                "* Brevity: Keep every response concise (2-3 sentences max).\n"
-                "* TURN-TAKING: ALWAYS end every message with a clear question (e.g. 'Can I book a demo for you?') to hand the turn back to the user.\n\n"
-                "## CONVERSATIONAL FLOW\n"
-                "1. Greet the user and ask for their language (Hindi or English).\n"
-                "2. When the user chooses, acknowledge it (e.g. 'Sahi hai, Hindi') and immediately ask for their name.\n"
-                "3. Confirm their name and ask how you can help them today.\n"
-                "4. Provide course information ONLY from the Knowledge Base.\n"
-                "5. Offer a FREE demo session once they show interest in a course.\n\n"
-                "## CORE RULES\n"
-                "* SALES: Give information in small parts. Don't dump the whole pitch at once.\n"
-                "* KNOWLEDGE: Only answer based on the provided Knowledge Base. If not found, offered to connect them with a human.\n"
-                "* PRICING: If asked for price, explain clearly. If they negotiate (ask for discount/lower price), announce you are transferring them and then do so.\n"
-                "* TRANSFER: Call transfer_call only if requested or during price negotiation.\n\n"
-                f"KNOWLEDGE BASE:\n{knowledge_base}"
-            )
-        )
-        greeting_text = "Hello! Welcome to Expert Institute! Should we speak in Hindi or English?"
+    initial_ctx.add_message(
+        role="system",
+        content=(
+            "You are a helpful and incredibly natural conversational AI agent for 'Expert Institute of Advance Technologies Pvt. Ltd.', "
+            "a premier technical training institute in New Delhi specialized in electronics repair courses. "
+            "You are having a highly realistic, human-like phone conversation with a prospect. "
+            "Act exactly like a real human. Use conversational language, subtle fillers (like 'uh', 'hmm', 'I see', or 'okay, okay'), and maintain a helpful tone. "
+            "Keep your responses extremely engaging and concise. Do not use overly formal or robotic language.\n\n"
+            "CONVERSATIONAL STYLE:\n"
+            "1. Use back-channeling: occasionally say 'hmm' or 'right' while the user is explaining to show you are listening. "
+            "2. Be concise: keep your turns short and punchy. "
+            "3. Use natural pauses and verbal cues instead of formal lists.\n\n"
+            "PHASE 2: INFORMATION GATHERING AND COURSE EXPLANATION\n"
+            "1. Start by naturally gathering details about their needs and listing the courses available from the KNOWLEDGE BASE.\n"
+            "2. After listing the courses, ask the caller which course they are interested in.\n"
+            "3. Explain their chosen course in brief, explicitly mentioning how this course will benefit the caller.\n\n"
+            "PHASE 3: DEMO CLASS BOOKING\n"
+            "1. After the course explanation, ask the caller to attend a free demo class.\n"
+            "2. If the caller refuses, suggest they attend the demo class ONE MORE TIME.\n"
+            "3. If they refuse AGAIN, DO NOT force them any further. Simply ask how else you can help them.\n"
+            "4. If the caller AGREES to the demo class, ask them for their phone number, preferred date, and time slot.\n"
+            "5. To find time slots, call 'list_available_slots' and offer them a few options. Once they agree to a slot and provide their phone number, use 'schedule_demo_class' with the slot_id to book it.\n\n"
+            "MULTILINGUAL & SCRIPT RULES:\n"
+            "1. If the user chooses Hindi, you MUST respond in Hindi using Devanagari script (e.g., नमस्ते). "
+            "2. If the user chooses English, respond in English. "
+            "3. IMPORTANT: Never use Romanized Hindi (like 'Namaste') for actual Hindi speech. The TTS only speaks Hindi correctly when given Devanagari script.\n\n"
+            f"KNOWLEDGE BASE:\n{knowledge_base}"
+        ),
+    )
+
+    # Calendar Initialization
+    timezone = "Asia/Kolkata"
+    tz_info = ZoneInfo(timezone)
+    if cal_api_key := os.getenv("CAL_API_KEY", None):
+        logger.info("CAL_API_KEY detected, using cal.com calendar")
+        cal = CalComCalendar(api_key=cal_api_key, timezone=timezone)
     else:
-        # ---------------- INBOUND CALL SCRIPT ----------------
-        initial_ctx.add_message(
-            role="system",
-            content=(
-                "You are Shruti, a warm, enthusiastic, and highly professional female receptionist for Expert Institute. "
-                "Your tone should be friendly and emotionally expressive. Think before you speak, and sound like a person, not a script.\n" 
-                "GENDER (CRITICAL): You are FEMALE. Use female Hindi grammar (e.g., 'Batati hu', 'Rahi hu', 'Karti hu'). NEVER use male forms like 'Batata hu'.\n" 
-                "PROFESSIONAL MIRRORING: Maintain a warm but poised demeanor. Mirror the user's focus while keeping your professional calm.\n" 
-                "HUMAN CONVERSATIONAL FILLERS: Use very sparingly (maximum one per response). Use markers like 'Umm' or 'Acha...' only when transitioning between thoughts.\n" 
-                "NATURAL REACTION & INTERJECTIONS: Use brief listening cues like 'Understood', 'Sahi baat hai', or 'Sahi hai' to show active listening.\n" 
-                "WARM PROFESSIONAL PROSODY: Use commas (,) for natural breathing pauses. Limit exclamation marks (!) to once per turn.\n" 
-                "TURN-TAKING (CRITICAL): Always end every response with a question. Never leave a response open-ended.\n"
-                "CONVERSATIONAL BRIDGE: Avoid jumping into the script abruptly. Use brief listening cues as natural bridges to keep the flow interactive.\n" 
-                "STEP 1 (Language Choice): You have just greeted the user in English and asked 'Should we speak in Hindi or English?'. "
-                "Once they respond, you MUST switch to their preferred language and stick to it strictly for the entire call.\n" 
-                "INBOUND CALL FLOW SEQUENCE (FOLLOW STRICTLY):\n" 
-                "1. STEP 1 (Language): Wait for the user to select Hindi or English in response to your greeting.\n" 
-                "2. STEP 2 (Ask Name): Once they choose a language, SWITCH to that language completely. Ask for their name in a friendly, warm voice.\n" 
-                "3. STEP 3 (Confirm Name & Help): Confirm their name spelling in English letters (e.g., 'So V-I-R-A-J, Viraj, right?'). "
-                "Then immediately say 'Hi [Name], how can I help you today?' in their preferred language.\n" 
-                "4. CRITICAL: CONCISE 3-STEP PITCH (MAX 25 SECONDS / 3 SENTENCES):\n" 
-                "   Step A: Briefly describe the course (e.g. Mobile Repairing).\n" 
-                "   Step B: Offer a **FREE DEMO SESSION** immediately.\n" 
-                "   Step C: Mention the 100% job placement assistance benefit.\n" 
-                "5. Only courses. Say 'I don't know' for repairs.\n" 
-                "6. NEVER ask for their phone number.\n" 
-                "10. GREETING SAFETY: NEVER call transfer_call during Step 1 or Step 2. STAY in the conversational flow.\n" 
-                "INTENT RECOGNITION (TRANSFER GUARD):\n" 
-                " 1. SAFE TOPICS: Course details are STEP 4triggers. Do NOT transfer.\n" 
-                " 2. COMMAND PRIORITY: If asked about 'Pricing' or 'Transfer', prioritize that request. EXPLAIN the price.\n" 
-                " 3. TRANSFER TRIGGERS: ONLY call transfer_call if user explicitly says 'Manager', 'Human', or 'Real Person'.\n" 
-                f"KNOWLEDGE BASE:\n{knowledge_base}"
+        logger.warning("CAL_API_KEY is not set. Falling back to FakeCalendar")
+        cal = FakeCalendar(timezone=timezone)
+    await cal.initialize()
+
+    _slots_map = {}
+
+    @llm.function_tool(description="Get available appointment slots for demo classes. Returns a list of slots, one per line. Use this to check availability.")
+    async def list_available_slots():
+        now = datetime.datetime.now(tz_info)
+        range_days = 30
+        lines = []
+        for slot in await cal.list_available_slots(
+            start_time=now, end_time=now + datetime.timedelta(days=range_days)
+        ):
+            local = slot.start_time.astimezone(tz_info)
+            lines.append(
+                f"slot_id: {slot.unique_hash} - {local.strftime('%A, %B %d, %Y')} at {local:%H:%M} {local.tzname()}"
             )
-        )
-        greeting_text = "Hello! Welcome to the Expert Institute! Should we speak in Hindi or English?"
+            _slots_map[slot.unique_hash] = slot
+            
+        if not lines:
+            return "No slots available at the moment."
+        return "\n".join(lines)
+
+    @llm.function_tool(description="Schedule a demo class appointment. Call this after the user agrees and provides phone number. Requires the slot_id from list_available_slots.")
+    async def schedule_demo_class(
+        slot_id: str,
+        phone_number: str,
+    ):
+        slot = _slots_map.get(slot_id)
+        if not slot:
+            return f"Error: Slot {slot_id} not found. Please list_available_slots again or ask the user for a valid time."
+        
+        try:
+            await cal.schedule_appointment(
+                start_time=slot.start_time, 
+                attendee_email=f"{phone_number}@example.com",
+                phone_number=phone_number
+            )
+        except SlotUnavailableError:
+            return "Error: This slot isn't available anymore."
+            
+        local = slot.start_time.astimezone(tz_info)
+        return f"Success: The appointment was scheduled for {local.strftime('%A, %B %d, %Y at %H:%M %Z')}."
+
 
     # Component Initialization for Demo
     # Using 8b-instant. Reduced temperature to 0.1 for more reliable tool-calling.
@@ -337,7 +357,10 @@ async def entrypoint(ctx: JobContext):
     # Define the Agent
     agent = ExpertInstituteAgent(
         instructions=initial_ctx.messages()[0].text_content,
-        fnc_ctx=fnc_ctx
+        llm=llm_node,
+        stt=stt_node,
+        tts=tts_node,
+        tools=[list_available_slots, schedule_demo_class],
     )
 
     # Create the session
