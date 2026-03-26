@@ -41,8 +41,8 @@ class ExpertInstituteAgent(Agent):
         "en": {"lang": "en-IN", "speaker": "simran", "pace": 1.05},
     }
 
-    def __init__(self, instructions: str, fnc_ctx=None):
-        super().__init__(instructions=instructions)
+    def __init__(self, fnc_ctx=None, **kwargs):
+        super().__init__(**kwargs)
         self._current_lang: Optional[str] = None
         self._fnc_ctx = fnc_ctx
 
@@ -174,11 +174,18 @@ async def send_ziper_whatsapp(phone_number, message_text):
 
     logger.info(f"Preparing to send Ziper.io WhatsApp message to {clean_phone}...")
     
+    access_token = os.getenv("ZIPER_ACCESS_TOKEN") or os.getenv("ZIPER_API_TOKEN")
+    instance_id = os.getenv("ZIPER_INSTANCE_ID")
+
+    if not access_token or not instance_id:
+        logger.error("Ziper.io credentials missing! Please check that ZIPER_ACCESS_TOKEN and ZIPER_INSTANCE_ID are correctly set in your .env file.")
+        return
+
     try:
         url = "https://ziper.io/api/send.php"
         params = {
-            "access_token": os.getenv("ZIPER_ACCESS_TOKEN"),
-            "instance_id": os.getenv("ZIPER_INSTANCE_ID"),
+            "access_token": access_token,
+            "instance_id": instance_id,
             "type": "text",
             "number": clean_phone,
             "message": message_text
@@ -325,12 +332,6 @@ async def entrypoint(ctx: JobContext):
         prompt="This is a bilingual conversation in Hindi and English. Topics: एडमिशन, इलेक्ट्रॉनिक्स, रिपेयर."
     )
     
-    # Switched back to Groq STT with auto-language detection for speed/accuracy (COMMENTED OUT)
-    # stt_node = groq.STT(
-    #     model="whisper-large-v3-turbo",
-    #     prompt="This is a bilingual conversation in Hindi and English. Watch for language choices: हिंदी, इंग्लिश, hindi, english. Topics: एडमिशन, इलेक्ट्रॉनिक्स, रिपेयर."
-    # )
-    
     tts_node = sarvam.TTS(
         target_language_code="en-IN", # Initialized for English greeting
         model="bulbul:v3",
@@ -363,6 +364,7 @@ async def entrypoint(ctx: JobContext):
         stt=stt_node,
         tts=tts_node,
         tools=[list_available_slots, schedule_demo_class],
+        fnc_ctx=fnc_ctx,
     )
 
     # Create the session
@@ -405,6 +407,11 @@ async def entrypoint(ctx: JobContext):
     await session.start(agent, room=ctx.room)
     print("DEBUG: SESSION STARTED. PREPARING GREETING...")
     
+    greeting_text = (
+        "Namaste! Welcome to Expert Institute. I am Simran. Before we begin, would you prefer to speak in English or Hindi? / "
+        "नमस्ते! एक्सपर्ट इंस्टिट्यूट में आपका स्वागत है। मैं सिमरन हूँ। शुरू करने से पहले, क्या आप अंग्रेजी या हिंदी में बात करना पसंद करेंगे?"
+    )
+
     # Sync greeting to history so LLM knows it spoke Step 1
     session.history.add_message(role="assistant", content=[greeting_text])
     
