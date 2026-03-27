@@ -170,29 +170,59 @@ class CalComCalendar(Calendar):
     ) -> None:
         start_time = start_time.astimezone(datetime.timezone.utc)
 
-        async with self._http_session.post(
-            headers=self._build_headers(api_version="2024-08-13"),
-            url=f"{BASE_URL}bookings",
-            json={
-                "start": start_time.isoformat(),
-                "attendee": {
-                    "name": attendee_name,
-                    "phoneNumber": phone_number,
-                    "timeZone": self.tz.tzname(None),
-                },
-                "eventTypeId": self._lk_event_id,
-            },
-        ) as resp:
-            data = await resp.json()
-            if error := data.get("error"):
-                message = error["message"]
-                if (
-                    "User either already has booking at this time or is not available"
-                    in message
-                ):
-                    raise SlotUnavailableError(error["message"])
+        attendee_email = (
+            f"{attendee_name.lower().replace(' ', '.')}@example.com"
+            if attendee_name
+            else "voice-agent@example.com"
+        )
 
-            resp.raise_for_status()
+        payload = {
+            "start": start_time.isoformat(),
+            "attendee": {
+                "name": attendee_name,
+                "email": attendee_email,
+                "phoneNumber": phone_number,
+                "timeZone": str(self.tz),
+            },
+            "bookingFieldsResponses": {
+                "email": attendee_email,
+            },
+            "eventTypeId": self._lk_event_id,
+        }
+
+        async with self._http_session.post(
+            headers=self._build_headers(api_version="2026-02-25"),
+            url=f"{BASE_URL}bookings",
+            json=payload,
+        ) as resp:
+            self._logger.debug(f"Request payload: {payload}")
+            self._logger.debug(f"Booking response status: {resp.status}")
+            if resp.status >= 400:
+                data = await resp.json()
+                self._logger.warning(f"Booking error response: {data}")
+                error_info = data.get("error", {})
+                message = (
+                    error_info.get("message", "")
+                    if isinstance(error_info, dict)
+                    else str(error_info)
+                )
+                if "not available" in message.lower() or "conflict" in message.lower():
+                    raise SlotUnavailableError(message)
+                resp.raise_for_status()
+
+            if resp.status != 204:
+                data = await resp.json()
+                if error := data.get("error"):
+                    message = (
+                        error.get("message", str(error))
+                        if isinstance(error, dict)
+                        else str(error)
+                    )
+                    if (
+                        "not available" in message.lower()
+                        or "conflict" in message.lower()
+                    ):
+                        raise SlotUnavailableError(message)
 
     async def list_available_slots(
         self, *, start_time: datetime.datetime, end_time: datetime.datetime

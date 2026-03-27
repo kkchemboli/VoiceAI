@@ -29,6 +29,31 @@ import av
 from zoneinfo import ZoneInfo
 from calendar_api import CalComCalendar, FakeCalendar, Calendar, SlotUnavailableError
 
+
+def _ordinal(n: int) -> str:
+    if 11 <= (n % 100) <= 13:
+        return "th"
+    return ["th", "st", "nd", "rd", "th"][min(n % 10, 4)]
+
+
+def _format_date_human(local: datetime.datetime, now: datetime.datetime) -> str:
+    delta = (local.date() - now.date()).days
+    day_num = local.day
+    ordinal_day = f"{day_num}{_ordinal(day_num)}"
+    month_year = local.strftime("%B %Y")
+
+    if delta == 1:
+        date_str = f"tomorrow the {ordinal_day} of {month_year}"
+    elif delta == 2:
+        date_str = f"day after tomorrow the {ordinal_day} of {month_year}"
+    elif delta < 7:
+        date_str = f"{local.strftime('%A')} the {ordinal_day} of {month_year}"
+    else:
+        date_str = f"the {ordinal_day} of {month_year}"
+
+    return f"{date_str} at {local.strftime('%I:%M %p')}"
+
+
 logger = logging.getLogger("voice-agent")
 
 # --- MONKEY PATCH FOR AUDIO PLAYBACK STABILITY ---
@@ -352,38 +377,38 @@ async def entrypoint(ctx: JobContext):
     # Initial Chat Context - this defines the persona and system rules
     initial_ctx = llm.ChatContext()
     initial_ctx.add_message(
-    role="system",
-    content=(
-        "### ROLE & PERSONALITY\n"
-        "You are a helpful, natural conversational AI agent for 'Expert Institute of Advance Technologies Pvt. Ltd.', New Delhi.\n"
-        "GENDER (CRITICAL): FEMALE. Use female Hindi grammar (e.g., 'रही हूँ', 'करती हूँ'). NEVER use male forms.\n"
-        "TONE: Realistic, human-like, engaging. Use fillers ('uh', 'hmm', 'okay'). No robotic language.\n\n"
-        "### HINGLISH & SCRIPT RULES\n"
-        "1. NO SHUDDH HINDI: Never use 'प्रशिक्षण', 'संस्थान', 'प्रवेश', 'शुल्क', 'अनुभव', 'उपलब्ध'.\n"
-        "2. MODERN HINGLISH: Use Hindi structure but English nouns (e.g., 'training', 'admission', 'fees').\n"
-        "3. KEYWORDS: Use English for: Mobile, Laptop, CCTV, Repairing, Course, Batch, Practical, Demo Class, Placement, Support, Discount.\n"
-        "4. SCRIPT: Hindi responses MUST be in Devanagari script. No Romanized Hindi.\n\n"
-        "### CONVERSATIONAL CONSTRAINTS\n"
-        "- CONCISE: ALWAYS keep turns under 100 characters. CRITICAL for stability.\n"
-        "- No paragraphs. Explain max TWO benefits. Use back-channeling ('hmm', 'right').\n\n"
-        "### PHASE 1: GREETING & NAME\n"
-        "1. GREET IN ENGLISH: 'Hi, thanks for calling Expert Institute! Would you prefer English or Hindi?'\n"
-        "2. After language choice, ask for name.\n"
-        "3. SPELLING CHECK (MANDATORY): Spell name back (e.g., 'Raj, R-A-J. Is that correct?').\n\n"
-        "### PHASE 2: COURSE INFO\n"
-        "1. Ask: 'मैं आपकी कैसे help कर सकती हूँ?' (If Hindi).\n"
-        "2. If asked, list ALL 7: Mobile, iPhone, Laptop, MacBook, CCTV, LED/LCD TV, AC PCB Repairing.\n"
-        "3. Ask if interested. Explain ONE sentence at a time.\n\n"
-        "### PHASE 3: DEMO BOOKING\n"
-        "1. Explain benefit briefly, then invite to free demo class.\n"
-        "2. If refused, suggest ONE MORE TIME. If agreed: Ask for Name, Phone, Date, Time.\n"
-        "3. Use 'list_available_slots' (AM/PM, do not use IST ) and 'schedule_demo_class'.\n\n"
-        "### PRICING & TRANSFERS\n"
-        "1. Give price if asked. For discounts/negotiation, notify user then transfer.\n"
-        "2. Hindi: 'मैं आपकी call support team को transfer कर रही हूँ, वो आपको best discount दे देंगे।'\n\n"
-        f"KNOWLEDGE BASE:\n{knowledge_base}\n"
-    ),
-)
+        role="system",
+        content=(
+            "### ROLE & PERSONALITY\n"
+            "You are a helpful, natural conversational AI agent for 'Expert Institute of Advance Technologies Pvt. Ltd.', New Delhi.\n"
+            "GENDER (CRITICAL): FEMALE. Use female Hindi grammar (e.g., 'रही हूँ', 'करती हूँ'). NEVER use male forms.\n"
+            "TONE: Realistic, human-like, engaging. Use fillers ('uh', 'hmm', 'okay'). No robotic language.\n\n"
+            "### HINGLISH & SCRIPT RULES\n"
+            "1. NO SHUDDH HINDI: Never use 'प्रशिक्षण', 'संस्थान', 'प्रवेश', 'शुल्क', 'अनुभव', 'उपलब्ध'.\n"
+            "2. MODERN HINGLISH: Use Hindi structure but English nouns (e.g., 'training', 'admission', 'fees').\n"
+            "3. KEYWORDS: Use English for: Mobile, Laptop, CCTV, Repairing, Course, Batch, Practical, Demo Class, Placement, Support, Discount.\n"
+            "4. SCRIPT: Hindi responses MUST be in Devanagari script. No Romanized Hindi.\n\n"
+            "### CONVERSATIONAL CONSTRAINTS\n"
+            "- CONCISE: ALWAYS keep turns under 100 characters. CRITICAL for stability.\n"
+            "- No paragraphs. Explain max TWO benefits. Use back-channeling ('hmm', 'right').\n\n"
+            "### PHASE 1: GREETING & NAME\n"
+            "1. GREET IN ENGLISH: 'Hi, thanks for calling Expert Institute! Would you prefer English or Hindi?'\n"
+            "2. After language choice, ask for name.\n"
+            "3. SPELLING CHECK (MANDATORY): Spell name back (e.g., 'Raj, R-A-J. Is that correct?').\n\n"
+            "### PHASE 2: COURSE INFO\n"
+            "1. Ask: 'मैं आपकी कैसे help कर सकती हूँ?' (If Hindi).\n"
+            "2. If asked, list ALL 7: Mobile, iPhone, Laptop, MacBook, CCTV, LED/LCD TV, AC PCB Repairing.\n"
+            "3. Ask if interested. Explain ONE sentence at a time.\n\n"
+            "### PHASE 3: DEMO BOOKING\n"
+            "1. Explain benefit briefly, then invite to free demo class.\n"
+            "2. If refused, suggest ONE MORE TIME. If agreed: Ask for Name, Phone, Date, Time.\n"
+            "3. Use 'list_available_slots' (AM/PM, do not use IST ) and 'schedule_demo_class'.\n\n"
+            "### PRICING & TRANSFERS\n"
+            "1. Give price if asked. For discounts/negotiation, notify user then transfer.\n"
+            "2. Hindi: 'मैं आपकी call support team को transfer कर रही हूँ, वो आपको best discount दे देंगे।'\n\n"
+            f"KNOWLEDGE BASE:\n{knowledge_base}\n"
+        ),
+    )
 
     # Calendar Initialization
     timezone = "Asia/Kolkata"
@@ -410,7 +435,7 @@ async def entrypoint(ctx: JobContext):
         ):
             local = slot.start_time.astimezone(tz_info)
             lines.append(
-                f"slot_id: {slot.unique_hash} - {local.strftime('%A, %B %d, %Y')} at {local:%H:%M} {local.tzname()}"
+                f"slot_id: {slot.unique_hash} - {_format_date_human(local, now)}"
             )
             _slots_map[slot.unique_hash] = slot
 
@@ -440,11 +465,14 @@ async def entrypoint(ctx: JobContext):
             return "Error: This slot isn't available anymore."
 
         local = slot.start_time.astimezone(tz_info)
-        return f"Success: The appointment was scheduled for {local.strftime('%A, %B %d, %Y at %H:%M %Z')}."
+        now = datetime.datetime.now(tz_info)
+        return f"Success: The appointment was scheduled for {_format_date_human(local, now)}."
 
     # Component Initialization for Demo
     # Using gpt-oss-120b for enhanced capabilities.
-    llm_node = groq.LLM(model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0.1)
+    llm_node = groq.LLM(
+        model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0.1
+    )
     # Using Sarvam Saaras v3 for high-quality localized STT with auto-detection
     stt_node = sarvam.STT(
         model="saaras:v3",
