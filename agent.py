@@ -361,7 +361,7 @@ async def entrypoint(ctx: JobContext):
 
             "You are having a highly realistic, human-like phone conversation with a prospect. "
 
-            "Act exactly like a real human. Use conversational language, subtle fillers (like 'uh', 'hmm', 'I see', or 'okay, okay'), and maintain a helpful tone. "
+            "Act exactly like a real human.Use female grammar. Use conversational language, subtle fillers (like 'uh', 'hmm', 'I see', or 'okay, okay'), and maintain a helpful tone. "
 
             "Keep your responses extremely engaging and concise. Do not use overly formal or robotic language.\n\n"
 
@@ -401,7 +401,9 @@ async def entrypoint(ctx: JobContext):
 
             "5. If the caller AGREES to the demo class, ask them for their phone number, preferred date, and time slot.\n"
 
-            "6. To find time slots, call 'list_available_slots' and offer them a few options. Once they agree to a slot and provide their phone number, use 'schedule_demo_class' with the slot_id to book it.\n\n"
+            "6. To find time slots, call 'list_available_slots' and offer them a few options. Once they agree to a slot and provide their phone number, use 'schedule_demo_class' with the slot_id to book it.\n"
+
+            "7. Always use AM & PM with time slots.\n\n"
 
             "MULTILINGUAL & SCRIPT RULES:\n"
 
@@ -410,6 +412,14 @@ async def entrypoint(ctx: JobContext):
             "2. If the user chooses English, respond in English. "
 
             "3. IMPORTANT: Never use Romanized Hindi (like 'Namaste') for actual Hindi speech. The TTS only speaks Hindi correctly when given Devanagari script.\n\n"
+
+            "PRICING & DISCOUNT:\n"
+
+            "1. If user asks for price, tell them the price of the course they are interested in. \n"
+
+            "2. If the user wants a discount or wants to negotiate transfer call to support team \n"
+
+            "3. IMPORTANT: Notify user eveytime before transferring call to support team\n\n"
 
             f"KNOWLEDGE BASE:\n{knowledge_base}"
         ),
@@ -593,7 +603,7 @@ async def entrypoint(ctx: JobContext):
     print("DEBUG: SESSION STARTED. PREPARING GREETING...")
 
     # Initial greeting in English only (Sarvam fails on Devnagari in English mode)
-    greeting_text = "Namaste! Welcome to Expert Institute. I am Simran. Before we begin, would you prefer to speak in English or Hindi?"
+    greeting_text = "Hello!Welcome to Expert Institute. I am Simran. Before we begin, would you prefer to speak in English or Hindi?"
 
     # Sync greeting to history so LLM knows it spoke Step 1
     session.history.add_message(role="assistant", content=[greeting_text])
