@@ -40,7 +40,7 @@ class Calendar(Protocol):
         self,
         *,
         start_time: datetime.datetime,
-        attendee_email: str,
+        attendee_name: str = "",
         phone_number: str = "",
     ) -> None: ...
     async def list_available_slots(
@@ -49,7 +49,9 @@ class Calendar(Protocol):
 
 
 class FakeCalendar(Calendar):
-    def __init__(self, *, timezone: str, slots: list[AvailableSlot] | None = None) -> None:
+    def __init__(
+        self, *, timezone: str, slots: list[AvailableSlot] | None = None
+    ) -> None:
         self.tz = ZoneInfo(timezone)
         self._slots: list[AvailableSlot] = []
 
@@ -64,7 +66,9 @@ class FakeCalendar(Calendar):
                 continue
 
             # build all possible 30-min slots between 09:00 and 17:00
-            day_start = datetime.datetime.combine(current_day, datetime.time(9, 0), tzinfo=self.tz)
+            day_start = datetime.datetime.combine(
+                current_day, datetime.time(9, 0), tzinfo=self.tz
+            )
             slots_in_day = [
                 day_start + datetime.timedelta(minutes=30 * i)
                 for i in range(int((17 - 9) * 2))  # (17-9)=8 hours => 16 slots
@@ -74,13 +78,19 @@ class FakeCalendar(Calendar):
             chosen = random.sample(slots_in_day, num_slots)
 
             for slot_start in sorted(chosen):
-                self._slots.append(AvailableSlot(start_time=slot_start, duration_min=30))
+                self._slots.append(
+                    AvailableSlot(start_time=slot_start, duration_min=30)
+                )
 
     async def initialize(self) -> None:
         pass
 
     async def schedule_appointment(
-        self, *, start_time: datetime.datetime, attendee_email: str, phone_number: str = ""
+        self,
+        *,
+        start_time: datetime.datetime,
+        attendee_name: str = "",
+        phone_number: str = "",
     ) -> None:
         # fake it by just removing it from our slots list
         self._slots = [slot for slot in self._slots if slot.start_time != start_time]
@@ -88,7 +98,9 @@ class FakeCalendar(Calendar):
     async def list_available_slots(
         self, *, start_time: datetime.datetime, end_time: datetime.datetime
     ) -> list[AvailableSlot]:
-        return [slot for slot in self._slots if start_time <= slot.start_time < end_time]
+        return [
+            slot for slot in self._slots if start_time <= slot.start_time < end_time
+        ]
 
 
 CAL_COM_EVENT_TYPE = "livekit-front-desk"
@@ -124,7 +136,8 @@ class CalComCalendar(Calendar):
             resp.raise_for_status()
             data = (await resp.json())["data"]
             lk_event_type = next(
-                (event for event in data if event.get("slug") == CAL_COM_EVENT_TYPE), None
+                (event for event in data if event.get("slug") == CAL_COM_EVENT_TYPE),
+                None,
             )
 
             if lk_event_type:
@@ -140,14 +153,20 @@ class CalComCalendar(Calendar):
                     },
                 ) as resp:
                     resp.raise_for_status()
-                    self._logger.info(f"successfully added {CAL_COM_EVENT_TYPE} event type")
+                    self._logger.info(
+                        f"successfully added {CAL_COM_EVENT_TYPE} event type"
+                    )
                     data = (await resp.json())["data"]
                     self._lk_event_id = data["id"]
 
             self._logger.info(f"event type id: {self._lk_event_id}")
 
     async def schedule_appointment(
-        self, *, start_time: datetime.datetime, attendee_email: str, phone_number: str = ""
+        self,
+        *,
+        start_time: datetime.datetime,
+        attendee_name: str = "",
+        phone_number: str = "",
     ) -> None:
         start_time = start_time.astimezone(datetime.timezone.utc)
 
@@ -157,8 +176,7 @@ class CalComCalendar(Calendar):
             json={
                 "start": start_time.isoformat(),
                 "attendee": {
-                    "name": attendee_email,
-                    "email": attendee_email,
+                    "name": attendee_name,
                     "phoneNumber": phone_number,
                     "timeZone": self.tz.tzname(None),
                 },
@@ -168,7 +186,10 @@ class CalComCalendar(Calendar):
             data = await resp.json()
             if error := data.get("error"):
                 message = error["message"]
-                if "User either already has booking at this time or is not available" in message:
+                if (
+                    "User either already has booking at this time or is not available"
+                    in message
+                ):
                     raise SlotUnavailableError(error["message"])
 
             resp.raise_for_status()
@@ -186,7 +207,8 @@ class CalComCalendar(Calendar):
             }
         )
         async with self._http_session.get(
-            headers=self._build_headers(api_version="2024-09-04"), url=f"{BASE_URL}slots/?{query}"
+            headers=self._build_headers(api_version="2024-09-04"),
+            url=f"{BASE_URL}slots/?{query}",
         ) as resp:
             resp.raise_for_status()
             raw_data = (await resp.json())["data"]
@@ -194,9 +216,13 @@ class CalComCalendar(Calendar):
             available_slots = []
             for _, slots in raw_data.items():
                 for slot in slots:
-                    start_dt = datetime.datetime.fromisoformat(slot["start"].replace("Z", "+00:00"))
+                    start_dt = datetime.datetime.fromisoformat(
+                        slot["start"].replace("Z", "+00:00")
+                    )
                     available_slots.append(
-                        AvailableSlot(start_time=start_dt, duration_min=EVENT_DURATION_MIN)
+                        AvailableSlot(
+                            start_time=start_dt, duration_min=EVENT_DURATION_MIN
+                        )
                     )
 
         return available_slots
