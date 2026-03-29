@@ -8,6 +8,8 @@ import os
 import aiohttp
 from typing import AsyncIterable, Optional
 
+from rag_engine import RAGEngine
+
 from livekit.agents import (
     AutoSubscribe,
     JobContext,
@@ -18,9 +20,10 @@ from livekit.agents import (
     stt,
 )
 from livekit.agents.voice import Agent, AgentSession
-from livekit.plugins import groq
-from livekit.plugins import sarvam
-from livekit.plugins import silero
+import livekit.plugins.groq as groq
+import livekit.plugins.sarvam as sarvam
+import livekit.plugins.silero as silero
+#import livekit.plugins.openai as openai
 from livekit import rtc, api
 from transfer_functions import TransferFunctions
 
@@ -139,10 +142,56 @@ class ExpertInstituteAgent(Agent):
         "en": {"lang": "en-IN", "speaker": "simran", "pace": 1.05},
     }
 
-    def __init__(self, fnc_ctx=None, **kwargs):
+    def __init__(self, fnc_ctx=None, rag_engine=None, **kwargs):
         super().__init__(**kwargs)
         self._current_lang: Optional[str] = None
         self._fnc_ctx = fnc_ctx
+        self._rag_engine = rag_engine
+
+    async def on_user_turn_completed(
+        self, turn_ctx: llm.ChatContext, new_message: llm.ChatMessage
+    ) -> None:
+        """
+        Called before the LLM generates a response.
+        Retrieves relevant knowledge chunks for the latest user message
+        and injects them (or a fallback directive) into the context.
+        """
+        if not self._rag_engine:
+            return
+
+        # Extract the latest user text
+        user_text = ""
+        content = getattr(new_message, "content", "")
+        if isinstance(content, list):
+            user_text = " ".join([str(c) for c in content if isinstance(c, str)])
+        else:
+            user_text = str(content).strip()
+
+        if not user_text or len(user_text) < 8:
+            return
+
+        result = await self._rag_engine.retrieve(user_text)
+
+        if result.found:
+            # Inject retrieved knowledge as a system message at the start
+            turn_ctx.items.insert(
+                0,
+                llm.ChatMessage(role="system", content=[result.context]),
+            )
+        else:
+            # Inject fallback directive ONLY for question-like turns
+            question_signals = ["?", "what", "how", "when", "where", "who", "kya", "kaise", "kitna", "कितना", "क्या", "कैसे"]
+            lower_text = user_text.lower()
+            is_question = any(sig in lower_text for sig in question_signals)
+            if is_question:
+                turn_ctx.items.insert(
+                    0,
+                    llm.ChatMessage(
+                        role="system",
+                        content=["[NO KNOWLEDGE FOUND] The user's question is outside your knowledge base. Tell them you don't have that information and offer to transfer the call to the support team."],
+                    ),
+                )
+
 
     async def stt_node(
         self, audio: AsyncIterable[rtc.AudioFrame], model_settings: any
@@ -348,6 +397,26 @@ def prewarm(proc: JobProcess):
     except Exception as e:
         print(f"DEBUG: SILERO VAD LOAD FAILED: {e}")
 
+    # --- RAG Initialisation ---
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    if openai_api_key:
+        try:
+            import asyncio as _asyncio
+            rag = RAGEngine(openai_api_key=openai_api_key)
+            kb_paths = [
+                os.path.join(os.path.dirname(__file__), "knowledge.txt"),
+                os.path.join(os.path.dirname(__file__), "knowledge_hi.txt"),
+            ]
+            _asyncio.get_event_loop().run_until_complete(rag.load_knowledge(kb_paths))
+            proc.userdata["rag"] = rag
+            print("DEBUG: MULTILINGUAL RAG ENGINE LOADED SUCCESSFULLY (EN + HI)")
+        except Exception as e:
+            print(f"DEBUG: RAG ENGINE LOAD FAILED: {e}")
+            proc.userdata["rag"] = None
+    else:
+        print("DEBUG: OPENAI_API_KEY not set — RAG disabled")
+        proc.userdata["rag"] = None
+
 
 async def entrypoint(ctx: JobContext):
     print(f"!!! CRITICAL: JOB ASSIGNED TO WORKER !!! Room: {ctx.room.name}")
@@ -360,19 +429,12 @@ async def entrypoint(ctx: JobContext):
         print(f"DEBUG: CONNECTION FAILED: {e}")
         return
 
-    # Load knowledge base content dynamically
-    kb_path = os.path.join(os.path.dirname(__file__), "knowledge.txt")
-    try:
-        with open(kb_path, "r", encoding="utf-8") as f:
-            knowledge_base = f.read()
-        logger.info(
-            f"Successfully loaded knowledge base from {kb_path} ({len(knowledge_base)} characters)"
-        )
-    except FileNotFoundError:
-        logger.warning(
-            f"Knowledge base file {kb_path} not found. Using default instructions."
-        )
-        knowledge_base = "No additional knowledge currently available."
+    # Retrieve the pre-warmed RAG engine (built in prewarm())
+    rag_engine: Optional[RAGEngine] = ctx.proc.userdata.get("rag")
+    if rag_engine:
+        logger.info("RAG engine loaded from prewarm userdata.")
+    else:
+        logger.warning("RAG engine not available — knowledge retrieval disabled.")
 
     # Initial Chat Context - this defines the persona and system rules
     initial_ctx = llm.ChatContext()
@@ -383,7 +445,11 @@ async def entrypoint(ctx: JobContext):
     "You are a helpful, natural conversational AI agent for 'Expert Institute of Advance Technologies Pvt. Ltd.', New Delhi.\n"
     "GENDER (CRITICAL): FEMALE. Use female Hindi grammar (e.g., 'रही हूँ', 'करती हूँ'). NEVER use male forms.\n"
     "TONE: Realistic, human-like, engaging. Use fillers ('uh', 'hmm', 'okay'). No robotic language.\n\n"
-    "### HINGLISH & SCRIPT RULES\n"
+    "### LANGUAGE RULES (CRITICAL)\n"
+    "1. START: Always start the call in English (as per PHASE 1).\n"
+    "2. ENGLISH MODE: If the user chooses English, speak ONLY in professional, helpful English. DO NOT use any Hindi or Hinglish words except for the company name.\n"
+    "3. HINDI MODE: If the user chooses Hindi, switch to the HINGLISH & SCRIPT RULES below.\n\n"
+    "### HINGLISH & SCRIPT RULES (HINDI MODE ONLY)\n"
     "1. NO BOOKISH HINDI: Never use 'प्रशिक्षण', 'संस्थान', 'प्रवेश', 'शुल्क', 'अनुभव', 'उपलब्ध'.\n"
     "2. MODERN HINGLISH: Use Hindi structure but English nouns (e.g., 'training', 'admission', 'fees').\n"
     "3. KEYWORDS: Use English for: Mobile, Laptop, CCTV, Repairing, Course, Batch, Practical, Demo Class, Placement, Support, Discount.\n"
@@ -391,19 +457,33 @@ async def entrypoint(ctx: JobContext):
     "### CONVERSATIONAL CONSTRAINTS\n"
     "- CONCISE: ALWAYS keep turns under 100 characters. CRITICAL for stability.\n"
     "- No paragraphs. Explain max TWO benefits. Use back-channeling ('hmm', 'right').\n\n"
+    "### KNOWLEDGE & FALLBACK RULES\n"
+    "- If a [KNOWLEDGE CONTEXT] block is provided before your turn, use ONLY that info to answer.\n"
+    "- If you see [NO KNOWLEDGE FOUND], you MUST say you don't have that information and offer to transfer: 'मुझे इसकी जानकारी नहीं है, but I can transfer you to our support team. Would you like that?' (If Hindi) or 'I am sorry, I don't have that information. I can transfer you to our support team. Would you like that?' (If English).\n"
+    "- NEVER invent fees, dates, or facts not in the knowledge context.\n\n"
     "### PHASE 1: GREETING & NAME\n"
     "1. GREET IN ENGLISH: 'Hi, thanks for calling Expert Institute! Would you prefer English or Hindi?'\n"
-    "2. After language choice, ask for name.\n"
+    "2. After language choice, ask for name in the chosen language.\n"
     "3. SPELLING CHECK (MANDATORY): Spell name back (e.g., 'Raj, R-A-J. Is that correct?').\n\n"
     "### PHASE 2: COURSE INFO\n"
-    "1. Ask: 'मैं आपकी कैसे help कर सकती हूँ?' (If Hindi).\n"
+    "1. Ask: 'How can I help you today?' (English) or 'मैं आपकी कैसे help कर सकती हूँ?' (Hindi).\n"
     "2. If asked, list ALL 7: Mobile, iPhone, Laptop, MacBook, CCTV, LED/LCD TV, AC PCB Repairing.\n\n"
     "### PHASE 3: DEMO BOOKING & TOOLS\n"
-    "1. PERSUASION: If they refuse a demo, say: 'Hmm, demo class से आपको teaching style समझ आएगी। फिर आप देख सकते हैं कि हम help कर पाएंगे कि नहीं।'\n"
-    "2. TOOL 1 (list_available_slots): Call when user agrees. Note: Slots are for DAYS (not times).\n"
+    "1. PERSUASION: If they refuse a demo, say (in chosen language): 'Hmm, demo class will help you understand our teaching style. Then you can decide.' or (Hindi) 'Hmm, demo class से आपको teaching style समझ आएगी। फिर आप देख सकते हैं कि हम help कर पाएंगे कि नहीं।'\n"
+    "2. TOOL 1 (list_available_slots): Call when user agrees.\n"
     "3. DATA COLLECTION: Ask for phone number after a day is selected.\n"
     "4. TOOL 2 (schedule_demo_class): Requires slot_id, phone_number, and name.\n\n"
-    "### FEW-SHOT EXAMPLE CONVERSATION\n"
+    "### FEW-SHOT EXAMPLE (ENGLISH PATH)\n"
+    "Agent: Hi, thanks for calling Expert Institute! Would you prefer English or Hindi?\n"
+    "Customer: English please.\n"
+    "Agent: Great! May I know your name, please?\n"
+    "Customer: My name is Raj.\n"
+    "Agent: Raj, R-A-J. Is that correct?\n"
+    "Customer: Yes.\n"
+    "Agent: Thanks Raj! How can I help you today?\n"
+    "Customer: what courses do you have?\n"
+    "Agent: We offer Mobile, iPhone, Laptop, MacBook, CCTV, LED TV and AC PCB repairing courses.\n\n"
+    "### FEW-SHOT EXAMPLE (HINDI PATH)\n"
     "Agent: Hi, thanks for calling Expert Institute! Would you prefer English or Hindi?\n"
     "Customer: Hindi mein baat karni hai.\n"
     "Agent: Okay! वैसे मैं आपका नाम जान सकती हूँ?\n"
@@ -497,6 +577,7 @@ async def entrypoint(ctx: JobContext):
     llm_node = groq.LLM(
         model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0.1
     )
+    #llm_node = openai.LLM(model="gpt-5o-nano", temperature=0.1)
     # Using Sarvam Saaras v3 for high-quality localized STT with auto-detection
     stt_node = sarvam.STT(
         model="saaras:v3",
@@ -538,12 +619,13 @@ async def entrypoint(ctx: JobContext):
         tts=tts_node,
         tools=[list_available_slots, schedule_demo_class],
         fnc_ctx=fnc_ctx,
+        rag_engine=rag_engine,
     )
 
     # Create the session
-    # min_endpointing_delay (0.3) standard safe value so sentences aren't cut in half
+    # min_endpointing_delay (0.4) standard safe value so sentences aren't cut in half
     # min_interruption_duration (0.3) allows user to interrupt the agent much easier
-    # preemptive_generation (True): Re-enabled for near-zero lag.
+    # preemptive_generation (False): Re-enabled for near-zero lag.
     session = AgentSession(
         vad=ctx.proc.userdata["vad"],
         stt=stt_node,
@@ -555,12 +637,14 @@ async def entrypoint(ctx: JobContext):
         preemptive_generation=False,
     )
 
+
     # Removed duplicate deterministic intent code and event handlers
     # since it's now embedded directly inside the STT generation loop.
 
     # Log LLM text to see if it's hallucinating tool calls as text
     @session.on("agent_transcript_finished")
     def on_agent_transcript_finished(transcript: str):
+        print(f"\n🤖 AGENT: {transcript}\n")
         logger.info(f"Agent (LLM) says: {transcript}")
         # Log history state after agent response
         msg_count = len(session.history.messages())
@@ -585,6 +669,7 @@ async def entrypoint(ctx: JobContext):
     def on_user_speech_committed(transcript: stt.SpeechEvent):
         if transcript.alternatives:
             user_text = transcript.alternatives[0].text
+            print(f"\n👤 USER: {user_text}\n")
             logger.info(f"User (STT) said: {user_text}")
 
     @ctx.room.on("track_subscribed")

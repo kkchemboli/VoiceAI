@@ -31,17 +31,34 @@ class TransferFunctions(llm.ToolContext):
         # 2. Format Destination
         if destination:
             destination = str(destination).strip()
-            if destination.isdigit():
-                destination = f"tel:+{destination}"
+            if destination.startswith("sip:") or destination.startswith("sips:") or destination.startswith("tel:"):
+                # Already a valid URI — leave it alone
+                pass
             elif destination.startswith("+"):
                 destination = f"tel:{destination}"
-            elif destination.startswith("sip:"):
-                # Leave full SIP URIs alone if provided manually
-                pass
-            elif destination.startswith("tel:"):
-                pass
+            elif destination.isdigit():
+                destination = f"tel:+{destination}"
+            else:
+                # Fallback: strip everything except digits and '+', then format
+                cleaned = "".join(c for c in destination if c.isdigit() or c == "+")
+                if cleaned:
+                    if not cleaned.startswith("+"):
+                        cleaned = f"+{cleaned}"
+                    destination = f"tel:{cleaned}"
+                else:
+                    # Nothing salvageable — use default
+                    destination = os.getenv("DEFAULT_TRANSFER_NUMBER")
+                    if destination and not destination.startswith("tel:"):
+                        destination = f"tel:{destination}" if destination.startswith("+") else f"tel:+{destination}"
+                    if not destination:
+                        return "Error: Could not format transfer destination."
 
-        # 3. Identify the Participant to transfer dynamically from the room
+        # 3. Final validation: ensure destination is a valid URI
+        if not destination or not (destination.startswith("sip:") or destination.startswith("sips:") or destination.startswith("tel:")):
+            logger.error(f"Invalid transfer destination after formatting: {destination}")
+            return "Error: Invalid transfer destination format."
+
+        # 4. Identify the Participant to transfer dynamically from the room
         participant_identity = None
         
         # Look for the exact participant identity assigned by LiveKit
