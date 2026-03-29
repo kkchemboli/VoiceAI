@@ -16,6 +16,15 @@ import aiohttp
 from livekit.agents.utils import http_context
 
 
+def _normalize_phone_number(phone_number: str) -> str:
+    phone = phone_number.strip()
+    if phone.startswith("+91"):
+        return phone
+    if phone.startswith("91"):
+        return "+" + phone
+    return "+91" + phone
+
+
 class SlotUnavailableError(Exception):
     def __init__(self, message: str) -> None:
         super().__init__(message)
@@ -169,23 +178,14 @@ class CalComCalendar(Calendar):
         phone_number: str = "",
     ) -> None:
         start_time = start_time.astimezone(datetime.timezone.utc)
-
-        attendee_email = (
-            f"{attendee_name.lower().replace(' ', '.')}@example.com"
-            if attendee_name
-            else "voice-agent@example.com"
-        )
+        normalized_phone = _normalize_phone_number(phone_number)
 
         payload = {
             "start": start_time.isoformat(),
             "attendee": {
                 "name": attendee_name,
-                "email": attendee_email,
-                "phoneNumber": phone_number,
+                "phoneNumber": normalized_phone,
                 "timeZone": str(self.tz),
-            },
-            "bookingFieldsResponses": {
-                "email": attendee_email,
             },
             "eventTypeId": self._lk_event_id,
         }
