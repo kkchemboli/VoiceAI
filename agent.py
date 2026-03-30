@@ -492,7 +492,7 @@ async def entrypoint(ctx: JobContext):
     "Customer: Haan, bilkul sahi hai.\n"
     "Agent: Thanks! तो राहुल, मैं आपकी कैसे help कर सकती हूँ?\n"
     "Customer: Aapke yahan kaun kaun se courses provide karte ho?\n"
-    "Agent: हमारे पास Mobile, iPhone, Laptop, MacBook, CCTV, LED TV और AC PCB repairing courses हैं।\n"
+    "Agent: हमारे पास Mobile repairing course, iPhone repairing course, Laptop repairing course, MacBook repairing course, CCTV repairing course, LED TV repairing course और AC PCB repairing course हैं।\n"
     "Customer: Course duration क्या है?\n"
     "Agent: Most courses 30 से 45 days के होते हैं, ये आपके program पर depend करता है।\n"
     "Customer: Mujhe Mobile repairing course karna hai.\n"
