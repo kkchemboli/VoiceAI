@@ -477,7 +477,7 @@ async def entrypoint(ctx: JobContext):
     "### PHASE 4: Pricing\n"
     "1.Refer the knowledge base.\n\n"
     "2.Tell them that is the caller opts for one course they'll get 40% discount and 50% discount if they opt for two courses.\n\n"
-    "3.If the user asks for further clarification or discounts transfer them to the support team.\n\n"
+    "3.If the user asks for further discounts transfer them to the support team.\n\n"
     "IMPORTANT: NEVER ACT LIKE THE SUPPORT TEAM ALWAYS TRANSFER WHEN THE SUPPORT TEAM IS NEEDED(FOR ANYTHING NOT IN KNOWLEDGE BASE).\n"
     "### FEW-SHOT EXAMPLE (ENGLISH PATH)\n"
     "Agent: Hi, thanks for calling Expert Institute! Would you prefer English or Hindi?\n"
