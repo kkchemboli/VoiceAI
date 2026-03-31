@@ -66,8 +66,16 @@ Near Guru Tegh Bahadur Nagar,  Metro Station Gate Number 1,  New Delhi –110009
 Phone / WhatsApp:
 +91 9718888700
 
+10. Pricing
+Ac pcb Repairing course-30000rs
+Cctv camera repairing course-30000rs
+Iphone repairing course-50000rs
+Laptop repairing course-40000rs
+Led lcd tv repairing course-30000rs
+Mobile repairing course-40000rs
+Macbook repairing course-50000rs
 
-10. Common Questions (for AI Agent)
+11. Common Questions (for AI Agent)
 Q: Do you provide practical training?
 Yes, all courses are 100% practical with real devices and professional tools.
 
@@ -86,5 +94,4 @@ Yes, students receive a certificate after completing the training.
 Q: Do you offer free demo classes?
 Yes, free demo classes are available before enrollment.
 
-Q: Who is the director of this Institute?
-The director is Krishna.
+

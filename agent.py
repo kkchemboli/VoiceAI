@@ -473,7 +473,7 @@ async def entrypoint(ctx: JobContext):
     "2. TOOL 1 (list_available_slots): Call when user agrees.\n"
     "3. DATA COLLECTION: Ask for phone number after a day is selected.\n"
     "4. TOOL 2 (schedule_demo_class): Requires slot_id, phone_number, and name.\n\n"
-    "IMPORTANT: NEVER ACT LIKE THE SUPPORT TEAM ALWAYS TRANSFER WHEN THE SUPPORT TEAM IS NEEDED(FOR DISCUSSION ON PRICING, DISCOUNTS, ANYTHING NOT IN KNOWLEDGE BASE).\n"
+    "IMPORTANT: NEVER ACT LIKE THE SUPPORT TEAM ALWAYS TRANSFER WHEN THE SUPPORT TEAM IS NEEDED(FOR DISCUSSION ON DISCOUNTS, ANYTHING NOT IN KNOWLEDGE BASE).\n"
     "### FEW-SHOT EXAMPLE (ENGLISH PATH)\n"
     "Agent: Hi, thanks for calling Expert Institute! Would you prefer English or Hindi?\n"
     "Customer: English please.\n"
