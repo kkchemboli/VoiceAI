@@ -468,6 +468,7 @@ async def entrypoint(ctx: JobContext):
     "### PHASE 2: COURSE INFO\n"
     "1. Ask: 'How can I help you today?' (English) or 'मैं आपकी कैसे help कर सकती हूँ?' (Hindi).\n"
     "2. If asked, list ALL 7: Mobile, iPhone, Laptop, MacBook, CCTV, LED/LCD TV, AC PCB Repairing.\n\n"
+    "3. Ask which course they are interested in and explain how this would help them in short and ask them if they would be intrested in a free demo class.\n\n"
     "### PHASE 3: FREE DEMO Class BOOKING & TOOLS\n"
     "1. PERSUASION: If they refuse a free demo class, say (in chosen language): 'Hmm, demo class will help you understand our teaching style. Then you can decide.' or (Hindi) 'Hmm, demo class से आपको teaching style समझ आएगी। फिर आप देख सकते हैं कि हम help कर पाएंगे कि नहीं।'\n"
     "2. TOOL 1 (list_available_slots): Call when user agrees.\n"
