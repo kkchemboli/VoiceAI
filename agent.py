@@ -468,7 +468,7 @@ async def entrypoint(ctx: JobContext):
     "### PHASE 2: COURSE INFO\n"
     "1. Ask: 'How can I help you today?' (English) or 'मैं आपकी कैसे help कर सकती हूँ?' (Hindi).\n"
     "2. If asked, list ALL 7: Mobile, iPhone, Laptop, MacBook, CCTV, LED/LCD TV, AC PCB Repairing.\n\n"
-    "3. Ask which course they are interested in and explain how this would help them in short and ask them if they would be intrested in a free demo class.\n\n"
+    "3. Ask which course they are interested in and explain how this would help them in short and ask them if they would be intrested in a free demo class.(DO NOT MENTION THE PRICE UNTIL THEY ASK FOR IT)\n\n"
     "### PHASE 3: FREE DEMO Class BOOKING & TOOLS\n"
     "1. PERSUASION: If they refuse a free demo class, say (in chosen language): 'Hmm, demo class will help you understand our teaching style. Then you can decide.' or (Hindi) 'Hmm, demo class से आपको teaching style समझ आएगी। फिर आप देख सकते हैं कि हम help कर पाएंगे कि नहीं।'\n"
     "2. TOOL 1 (list_available_slots): Call when user agrees.\n"
@@ -741,7 +741,35 @@ async def entrypoint(ctx: JobContext):
 
         # 3. Ziper.io: Send welcome message to Prospect
         if user_phone:
-            greeting_msg = "Hello! Welcome to Expert Institute. We're glad we could speak with you. Let us know if you need anything else!"
+            greeting_msg = """Welcome to Expert Institute. We're glad we could speak with you. Let us know if you need anything else! Thanks for your time on the call.  
+
+Here are the course details you can explore:
+
+📄 iPhone Repairing Course:  
+https://drive.google.com/file/d/1-EkHu2kuGwljsG5zI3pgRh7srp_QsHaf/view?usp=sharing  
+
+📄 Advance Mobile Repairing Course:  
+https://drive.google.com/file/d/1Vry-e0KX3-UkDC_eQkLKz4kPBfacKqp5/view?usp=sharing  
+
+📄 CCTV Camera Repairing Course:  
+https://drive.google.com/file/d/1r0aBJvoklamVrw7j8VFJt6foEnYwHRpC/view?usp=sharing  
+
+📄 AC PCB Repairing Course:  
+https://drive.google.com/file/d/1AmDJM7PkKC2JmfHGnphMkEgix_4nPcuC/view?usp=sharing  
+
+📄 MacBook Repairing Course:  
+https://drive.google.com/file/d/1caw2uJLad23ZRxazDuPWD1wukltdZicc/view?usp=sharing  
+
+📄 LCD/LED Smart TV Repairing Course:  
+https://drive.google.com/file/d/1MJz5qR5V-_m3sZW3wwcFDNetks-L3TdZ/view?usp=sharing  
+
+📄 Advance Laptop Repairing Course:  
+https://drive.google.com/file/d/1VLj7gE9JPHBXJ9kx0EF95UYOuAvOdTnl/view?usp=sharing  
+
+💡 All courses include 100% practical training + job/business support.  
+
+Reply with the course name to get fees details or book a FREE demo class.  
+📞 Call/WhatsApp: 9718888700"""
             await send_ziper_whatsapp(user_phone, greeting_msg)
 
     ctx.add_shutdown_callback(send_summary)
