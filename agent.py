@@ -282,7 +282,7 @@ class ExpertInstituteAgent(Agent):
             raise
 
 
-async def generate_call_summary(chat_messages, user_phone=None):
+async def generate_call_summary(chat_messages, user_phone=None, booking_info=None):
     """
     Summarizes the call transcript using Groq and returns a formatted string.
     """
@@ -347,6 +347,14 @@ async def generate_call_summary(chat_messages, user_phone=None):
             except Exception as e:
                 logger.error(f"Failed to generate summary: {e}")
                 summary = f"name: Unknown\nnumber: {user_phone or 'Unknown'}\nsummary: Could not generate summary."
+
+        # Append booking details if booking was made
+        if booking_info and booking_info.get("booked"):
+            summary += "\n\nBOOKING DETAILS:\n"
+            summary += f"date: {booking_info.get('date', 'N/A')}\n"
+            summary += f"time: {booking_info.get('time', 'N/A')}\n"
+            summary += f"name: {booking_info.get('name', 'Unknown')}\n"
+            summary += f"phone: {booking_info.get('phone', 'Unknown')}"
 
         return summary
 
@@ -471,7 +479,7 @@ async def entrypoint(ctx: JobContext):
             "1. NO BOOKISH HINDI: Never use 'प्रशिक्षण', 'संस्थान', 'प्रवेश', 'शुल्क', 'अनुभव', 'उपलब्ध'.\n"
             "2. MODERN HINGLISH:- Speak like a real 20–30 year old Indian customer support agent\n"
             "Mix Hindi + English naturally\n"
-            "Example: ❌ \"आपकी समस्या का समाधान किया जाएगा\" ✅ \"Main aapki problem solve kar deti hoon\"\n"
+            'Example: ❌ "आपकी समस्या का समाधान किया जाएगा" ✅ "Main aapki problem solve kar deti hoon"\n'
             "3. KEYWORDS: Use English for: Mobile, Laptop, CCTV, Repairing, Course, Batch, Practical, FreeDemo Class, Placement, Support, Discount.\n"
             "4. SCRIPT: Hindi responses MUST be in Devanagari script. No Romanized Hindi.\n\n"
             "### CONVERSATIONAL CONSTRAINTS\n"
@@ -569,6 +577,7 @@ async def entrypoint(ctx: JobContext):
     await cal.initialize()
 
     _slots_map = {}
+    booking_info = {"booked": False, "name": "", "phone": "", "date": "", "time": ""}
 
     @llm.function_tool(
         description="Get available appointment slots for demo classes. Returns a list of slots, one per line. Use this to check availability."
@@ -613,6 +622,14 @@ async def entrypoint(ctx: JobContext):
 
         local = slot.start_time.astimezone(tz_info)
         now = datetime.datetime.now(tz_info)
+
+        # Track booking information for summary
+        booking_info["booked"] = True
+        booking_info["name"] = name
+        booking_info["phone"] = phone_number
+        booking_info["date"] = _format_date_human(local, now)
+        booking_info["time"] = local.strftime("%I:%M %p")
+
         return f"Success: The appointment was scheduled for {_format_date_human(local, now)}."
 
     # Component Initialization for Demo
@@ -766,7 +783,7 @@ async def entrypoint(ctx: JobContext):
 
         # 1. Generate Custom Summary (Logging ONLY, Telegram REMOVED)
         admin_summary_text = await generate_call_summary(
-            session.history.messages(), user_phone
+            session.history.messages(), user_phone, booking_info
         )
 
         if not admin_summary_text:
