@@ -777,35 +777,19 @@ async def entrypoint(ctx: JobContext):
 
         # 3. Ziper.io: Send welcome message to Prospect
         if user_phone:
-            greeting_msg = """Welcome to Expert Institute. We're glad we could speak with you. Let us know if you need anything else! Thanks for your time on the call.  
+            greeting_msg = """Hi! 😊 Thank you for your time on the call.
 
-Here are the course details you can explore:
+You can check complete course details here:
+📄 https://www.expertinstitute.in/bookmycourse/
 
-📄 iPhone Repairing Course:  
-https://drive.google.com/file/d/1-EkHu2kuGwljsG5zI3pgRh7srp_QsHaf/view?usp=sharing  
+To secure your seat, book here:
+💳 https://pages.razorpay.com/pl_GIkisCwDv60T3i/view
 
-📄 Advance Mobile Repairing Course:  
-https://drive.google.com/file/d/1Vry-e0KX3-UkDC_eQkLKz4kPBfacKqp5/view?usp=sharing  
+🎯 Special Offer:
+If you book now with just ₹500, this amount will be adjusted in your course fees — so you can claim the offer without any risk.
 
-📄 CCTV Camera Repairing Course:  
-https://drive.google.com/file/d/1r0aBJvoklamVrw7j8VFJt6foEnYwHRpC/view?usp=sharing  
-
-📄 AC PCB Repairing Course:  
-https://drive.google.com/file/d/1AmDJM7PkKC2JmfHGnphMkEgix_4nPcuC/view?usp=sharing  
-
-📄 MacBook Repairing Course:  
-https://drive.google.com/file/d/1caw2uJLad23ZRxazDuPWD1wukltdZicc/view?usp=sharing  
-
-📄 LCD/LED Smart TV Repairing Course:  
-https://drive.google.com/file/d/1MJz5qR5V-_m3sZW3wwcFDNetks-L3TdZ/view?usp=sharing  
-
-📄 Advance Laptop Repairing Course:  
-https://drive.google.com/file/d/1VLj7gE9JPHBXJ9kx0EF95UYOuAvOdTnl/view?usp=sharing  
-
-💡 All courses include 100% practical training + job/business support.  
-
-Reply with the course name to get fees details or book a FREE demo class.  
-📞 Call/WhatsApp: 9718888700"""
+Reply here if you need any help or want to book a FREE demo class.
+📞 9718888700"""
             await send_ziper_whatsapp(user_phone, greeting_msg)
 
     ctx.add_shutdown_callback(send_summary)
