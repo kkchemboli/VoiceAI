@@ -66,14 +66,16 @@ Near Guru Tegh Bahadur Nagar,  Metro Station Gate Number 1,  New Delhi –110009
 Phone / WhatsApp:
 +91 9718888700
 
-10. Pricing
-Ac pcb Repairing course-thirty thousand rupees
-Cctv camera repairing course-thirty thousand rupees
-Iphone repairing course-fifty thousand rupees
-Laptop repairing course-forty thousand rupees
-Led lcd tv repairing course-thirty thousand rupees
-Mobile repairing course-forty thousand rupees
-Macbook repairing course-fifty thousand rupees
+10. Pricing & Discount
+Ac pcb Repairing course-thirty thousand rupees , Discounted price-eighteen thousand rupees
+Cctv camera repairing course-thirty thousand rupees , Discounted price-eighteen thousand rupees
+Iphone repairing course-fifty thousand rupees , Discounted price-thirty thousand rupees
+Laptop repairing course-forty thousand rupees , Discounted price-twenty four thousand rupees
+Led lcd tv repairing course-thirty thousand rupees , Discounted price-eighteen thousand rupees
+Mobile repairing course-forty thousand rupees , Discounted price-twenty four thousand rupees
+Macbook repairing course-fifty thousand rupees , Discounted price-thirty thousand rupees
+For single course discount is 40%
+For combo of two courses discount is 50%
 
 11. Common Questions (for AI Agent)
 Q: Do you provide practical training?
@@ -93,5 +95,146 @@ Yes, students receive a certificate after completing the training.
 
 Q: Do you offer free demo classes?
 Yes, free demo classes are available before enrollment.
+
+Q: Who are the directors of the company?
+The directors are Banshraj Yadav and Krishna Yadav.
+
+Course Name: Mobile Repairing
+Overview:
+- Training from basic to advanced chip-level
+Brands Covered:
+- Samsung, Vivo, Oppo, Realme, OnePlus
+Basic Training:
+- Electronics fundamentals
+- Component identification
+- Soldering/desoldering
+Software Skills:
+- FRP unlock
+- Flashing
+- Data recovery
+Hardware Skills:
+- Motherboard repair
+- IC reballing
+- Dead phone repair
+
+
+
+Course Name: iPhone Repairing Course
+Overview:
+* Specialized training for Apple devices from basic to advanced level
+Models Covered:
+* iPhone 6 to latest models
+Basic Training:
+* iPhone architecture & components
+* Screw types & safe opening techniques
+* Soldering/desoldering basics
+Software Skills:
+* iOS flashing & updates
+* Apple ID & iCloud troubleshooting
+* Data backup & recovery
+Hardware Skills:
+* Logic board repair
+* Face ID & Touch ID troubleshooting
+* Charging, display & battery issues
+
+
+
+Course Name: Laptop Repairing Course
+Overview:
+* Complete training in laptop hardware and troubleshooting
+Brands Covered:
+* HP, Dell, Lenovo, Asus, Acer
+Basic Training:
+* Laptop components & structure
+* Tools handling & disassembly
+* Soldering basics
+Software Skills:
+* OS installation (Windows/Linux)
+* Driver installation
+* Virus removal & system optimization
+Hardware Skills:
+* Motherboard troubleshooting
+* Keyboard, display & battery repair
+* Power & charging issues
+
+
+
+Course Name: MacBook Repairing Course
+Overview:
+* Advanced training for Apple MacBook devices
+Models Covered:
+* MacBook Air & MacBook Pro
+Basic Training:
+* MacBook internal structure
+* Safe disassembly techniques
+* Component identification
+Software Skills:
+* macOS installation & recovery
+* Data backup & restoration
+* Apple diagnostics tools
+Hardware Skills:
+* Logic board repair
+* Trackpad, keyboard & display repair
+* Charging & power issues
+
+
+
+Course Name: CCTV Camera Training
+Overview:
+* Practical training for installation and maintenance of surveillance systems
+Systems Covered:
+* Analog & IP CCTV systems
+Basic Training:
+* Camera types & components
+* Wiring & cabling
+* Tools handling
+Software Skills:
+* DVR/NVR configuration
+* Remote viewing setup
+* Network configuration
+Hardware Skills:
+* Camera installation
+* Fault diagnosis & repair
+* Power supply troubleshooting
+
+
+
+Course Name: LED, LCD & Smart TV Repairing Course
+Overview:
+* Training for modern television repair from basic to advanced
+Brands Covered:
+* Samsung, LG, Sony, MI, Panasonic
+Basic Training:
+* TV panel types & components
+* Circuit understanding
+* Soldering/desoldering
+Software Skills:
+* Firmware installation
+* Software troubleshooting
+* Smart TV configuration
+Hardware Skills:
+* Panel & backlight repair
+* Power supply board repair
+* Motherboard troubleshooting
+
+
+
+Course Name: AC PCB Repairing Course
+Overview:
+* Specialized training in air conditioner PCB repair and troubleshooting
+Types Covered:
+* Split AC & Window AC
+Basic Training:
+* PCB fundamentals
+* Electronic components & circuits
+* Testing tools usage
+Software Skills:
+* Error code analysis
+* PCB programming basics
+Hardware Skills:
+* PCB fault finding
+* Component replacement
+* Power section repair
+
 
 
