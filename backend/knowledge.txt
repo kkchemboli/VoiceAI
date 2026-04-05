@@ -1,0 +1,240 @@
+Company : Expert Institute of Advance Technologies Pvt. Ltd.
+Industry : Technical Training institute  
+Location : New Delhi, India
+
+Company Overview
+
+Expert Institute of Advance Technologies Pvt. Ltd is an ISO 9001:2015 certified technical training institute specializing in professional courses such as Mobile, iPhone, Laptop, MacBook, CCTV Camera, AC PCB and LED,LCD & Smart TV repair training.
+The institute offers hands-on, chip-level training using real tools and live devices, enabling students to gain practical skills for employment or to start their own repair businesses.
+With over fifteen years of experience, the institute has successfully trained more than one lakh students. 
+
+2. Courses Offered
+Mobile Repairing Course, iPhone Repairing Course, Laptop Repairing Course, MacBook Repairing Course, CCTV Camera Training, LED, LCD & Smart TV Repairing Course, and AC PCB Repairing Course.
+3. Course Duration
+thirty to forty five days depending on the course.
+Full-day training
+Fast-track batch
+Regular batch
+
+
+4. Training Method
+Zero level to advanced level training
+Training is hundred percent practical and hands-on.
+Students practice using professional Advanced tools  
+
+
+5. Features & Benefits
+hundred percent practical training
+Live service center experience
+Lifetime technical support
+Job placement assistance
+Business startup guidance
+Access to advanced repair tools
+Continuous technology updates
+
+6. Career Opportunities After Course
+After completing the training students can:
+After completing the Mobile Repairing Course, students can explore a wide range of career opportunities in the rapidly growing smartphone industry:
+Expert Technician – Work in authorized or local service centers
+Chip-Level Technician – Handle advanced motherboard and IC-level repairs
+Service Center Engineer – Join branded or multi-brand repair centers
+Mobile Shop Owner – Start your own mobile repairing and sales shop
+Software Technician – Specialize in flashing, unlocking, and software troubleshooting using professional tools
+high-demand technical skill  with good earning potential.
+
+7. Eligibility
+
+Anyone can join:
+Students after tenth standard or twelfth standard
+College students
+Working professionals
+Business owners wanting to start a repair shop
+No prior technical knowledge is required.
+
+8. Batch Information
+
+New batches start every few days
+Limited seats available in each batch
+Demo classes are available before enrollment for better understanding
+
+9. Contact Details
+
+Address:
+107,  3rd Floor, Kingsway Camp
+Near Guru Tegh Bahadur Nagar,  Metro Station Gate Number 1,  New Delhi –110009, India 
+
+Phone / WhatsApp:
++91 9718888700
+
+10. Pricing & Discount
+Ac pcb Repairing course-thirty thousand rupees , Discounted price-eighteen thousand rupees
+Cctv camera repairing course-thirty thousand rupees , Discounted price-eighteen thousand rupees
+Iphone repairing course-fifty thousand rupees , Discounted price-thirty thousand rupees
+Laptop repairing course-forty thousand rupees , Discounted price-twenty four thousand rupees
+Led lcd tv repairing course-thirty thousand rupees , Discounted price-eighteen thousand rupees
+Mobile repairing course-forty thousand rupees , Discounted price-twenty four thousand rupees
+Macbook repairing course-fifty thousand rupees , Discounted price-thirty thousand rupees
+For single course discount is 40%
+For combo of two courses discount is 50%
+
+11. Common Questions (for AI Agent)
+Q: Do you provide practical training?
+Yes, all courses are hundred percent practical with real devices and professional tools.
+
+Q: Do you provide job placement?
+Yes, the institute provides job assistance and business guidance after course completion.
+
+Q: Can beginners join the course?
+Yes, courses start from basics and move to advanced chip-level repair.
+
+Q: What is the course duration?
+Most courses are thirty to forty five days depending on the program.
+
+Q: Do you provide certificates?
+Yes, students receive a certificate after completing the training.
+
+Q: Do you offer free demo classes?
+Yes, free demo classes are available before enrollment.
+
+Q: Who are the directors of the company?
+The directors are Banshraj Yadav and Krishna Yadav.
+
+Course Name: Mobile Repairing
+Overview:
+- Training from basic to advanced chip-level
+Brands Covered:
+- Samsung, Vivo, Oppo, Realme, OnePlus
+Basic Training:
+- Electronics fundamentals
+- Component identification
+- Soldering/desoldering
+Software Skills:
+- FRP unlock
+- Flashing
+- Data recovery
+Hardware Skills:
+- Motherboard repair
+- IC reballing
+- Dead phone repair
+
+
+
+Course Name: iPhone Repairing Course
+Overview:
+* Specialized training for Apple devices from basic to advanced level
+Models Covered:
+* iPhone 6 to latest models
+Basic Training:
+* iPhone architecture & components
+* Screw types & safe opening techniques
+* Soldering/desoldering basics
+Software Skills:
+* iOS flashing & updates
+* Apple ID & iCloud troubleshooting
+* Data backup & recovery
+Hardware Skills:
+* Logic board repair
+* Face ID & Touch ID troubleshooting
+* Charging, display & battery issues
+
+
+
+Course Name: Laptop Repairing Course
+Overview:
+* Complete training in laptop hardware and troubleshooting
+Brands Covered:
+* HP, Dell, Lenovo, Asus, Acer
+Basic Training:
+* Laptop components & structure
+* Tools handling & disassembly
+* Soldering basics
+Software Skills:
+* OS installation (Windows/Linux)
+* Driver installation
+* Virus removal & system optimization
+Hardware Skills:
+* Motherboard troubleshooting
+* Keyboard, display & battery repair
+* Power & charging issues
+
+
+
+Course Name: MacBook Repairing Course
+Overview:
+* Advanced training for Apple MacBook devices
+Models Covered:
+* MacBook Air & MacBook Pro
+Basic Training:
+* MacBook internal structure
+* Safe disassembly techniques
+* Component identification
+Software Skills:
+* macOS installation & recovery
+* Data backup & restoration
+* Apple diagnostics tools
+Hardware Skills:
+* Logic board repair
+* Trackpad, keyboard & display repair
+* Charging & power issues
+
+
+
+Course Name: CCTV Camera Training
+Overview:
+* Practical training for installation and maintenance of surveillance systems
+Systems Covered:
+* Analog & IP CCTV systems
+Basic Training:
+* Camera types & components
+* Wiring & cabling
+* Tools handling
+Software Skills:
+* DVR/NVR configuration
+* Remote viewing setup
+* Network configuration
+Hardware Skills:
+* Camera installation
+* Fault diagnosis & repair
+* Power supply troubleshooting
+
+
+
+Course Name: LED, LCD & Smart TV Repairing Course
+Overview:
+* Training for modern television repair from basic to advanced
+Brands Covered:
+* Samsung, LG, Sony, MI, Panasonic
+Basic Training:
+* TV panel types & components
+* Circuit understanding
+* Soldering/desoldering
+Software Skills:
+* Firmware installation
+* Software troubleshooting
+* Smart TV configuration
+Hardware Skills:
+* Panel & backlight repair
+* Power supply board repair
+* Motherboard troubleshooting
+
+
+
+Course Name: AC PCB Repairing Course
+Overview:
+* Specialized training in air conditioner PCB repair and troubleshooting
+Types Covered:
+* Split AC & Window AC
+Basic Training:
+* PCB fundamentals
+* Electronic components & circuits
+* Testing tools usage
+Software Skills:
+* Error code analysis
+* PCB programming basics
+Hardware Skills:
+* PCB fault finding
+* Component replacement
+* Power section repair
+
+
+
