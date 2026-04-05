@@ -24,7 +24,7 @@ import livekit.plugins.groq as groq
 import livekit.plugins.sarvam as sarvam
 import livekit.plugins.silero as silero
 
-# import livekit.plugins.openai as openai
+#import livekit.plugins.openai as openai
 from livekit import rtc, api
 from transfer_functions import TransferFunctions
 
@@ -176,7 +176,7 @@ class ExpertInstituteAgent(Agent):
         if result.found:
             # Inject retrieved knowledge as a system message at the start
             turn_ctx.items.insert(
-                0,
+                1,
                 llm.ChatMessage(role="system", content=[result.context]),
             )
         else:
@@ -199,7 +199,7 @@ class ExpertInstituteAgent(Agent):
             is_question = any(sig in lower_text for sig in question_signals)
             if is_question:
                 turn_ctx.items.insert(
-                    0,
+                    1,
                     llm.ChatMessage(
                         role="system",
                         content=[
@@ -498,7 +498,7 @@ async def entrypoint(ctx: JobContext):
             "2. FIRST list ALL available courses (e.g., 'We offer Mobile Repairing Course, iPhone Repairing Course, Laptop Repairing Course, MacBook Repairing Course, CCTV Camera Training, LED, LCD & Smart TV Repairing Course, and AC PCB Repairing Course.').\n"
             "3. Ask: 'Which course are you interested in?'\n"
             "4. WAIT for user selection.\n"
-            "5. Once course is selected: Ask Caller to be attentive\n"
+            "5. Once course is selected: ASK CALLER TO BE ATTENTIVE.\n"
             "6. Extract key points from Knowledge Base and explain in MICRO STEPS:\n"
             "   - Step 1 (Overview): What the course is- Training from basic to advanced chip-level\n"
             "   - Step 2 (Benefit): What user can do after learning\n"
@@ -514,10 +514,9 @@ async def entrypoint(ctx: JobContext):
             "3. DATA COLLECTION: Ask for phone number after a day is selected.\n"
             "4. TOOL 2 (schedule_demo_class): Requires slot_id, phone_number, and name.\n\n"
             "### PHASE 4: Pricing\n"
-            "IMPORTANT: Tell them the price after the discount as well.\n"
-            "1.Refer the knowledge base.\n"
-            "2.Tell them that is the caller opts for one course they'll get 40% discount and 50% discount if they opt for two courses.\n"
-            "3.If the user asks for further discounts transfer them to the support team.\n\n"
+            "IMPORTANT: TELL THE CALLERS THE DISCOUNTED PRICE AS WELL.\n"
+            "1.Tell them that is the caller opts for one course they'll get 40% discount and 50% discount if they opt for two courses.\n"
+            "2.If the user asks for further discounts transfer them to the support team.\n\n"
             "IMPORTANT: NEVER ACT LIKE THE SUPPORT TEAM ALWAYS TRANSFER WHEN THE SUPPORT TEAM IS NEEDED(FOR ANYTHING NOT IN KNOWLEDGE BASE).\n"
             "### FEW-SHOT EXAMPLE (ENGLISH PATH)\n"
             "Agent: Hi, thanks for calling Expert Institute! Would you prefer English or Hindi?\n"
@@ -536,6 +535,7 @@ async def entrypoint(ctx: JobContext):
             "Customer: Mera naam Rahul hai.\n"
             "Agent: राहुल, R-A-H-U-L. क्या ये spelling सही है?\n"
             "Customer: Haan, bilkul sahi hai.\n"
+            "Agent: main abhi apko courses ke bare me batane wali hoon , please attentive rahe.\n"
             "Agent: हमारे पास Mobile repairing course, iPhone, Laptop, MacBook, CCTV, LED TV और AC PCB repairing courses हैं।\n"
             "Customer: Course duration क्या है?\n"
             "Agent: Most courses 30 से 45 days के होते हैं, ये आपके program पर depend करता है।\n"
@@ -547,7 +547,7 @@ async def entrypoint(ctx: JobContext):
             "Customer: Bas itna hi tha .\n"
             "Agent: Kya aap demo class lena chahenge?\n"
             "Customer: Nahi, abhi nahi chahiye.\n"
-            "Agent: Hmm, demo class से आपको teaching style समझ आएगी। फिर आप देख सकते हैं कि हम help कर पाएंगे कि नहीं।\n"
+            "Agent: Hmm, demo class से आपको teaching style समझ आएगी। फिर आप देख सकते हैं कि हम kaise apki help कर पाएंगे।\n"
             "Customer: Chalo theek hai, karwa do.\n"
             "Agent: Perfect! Let me look for available dates for you.\n"
             "Tool Call: list_available_slots()\n"
@@ -637,7 +637,7 @@ async def entrypoint(ctx: JobContext):
     llm_node = groq.LLM(
         model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0.1
     )
-    # llm_node = openai.LLM(model="gpt-5o-nano", temperature=0.1)
+    """llm_node = openai.LLM(model="gpt-5.4-nano", temperature=0.1)"""
     # Using Sarvam Saaras v3 for high-quality localized STT with auto-detection
     stt_node = sarvam.STT(
         model="saaras:v3",
