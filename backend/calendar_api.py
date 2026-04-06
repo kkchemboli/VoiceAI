@@ -55,6 +55,9 @@ class Calendar(Protocol):
     async def list_available_slots(
         self, *, start_time: datetime.datetime, end_time: datetime.datetime
     ) -> list[AvailableSlot]: ...
+    async def list_bookings(
+        self, *, start_time: datetime.datetime, end_time: datetime.datetime
+    ) -> list[dict]: ...
 
 
 class FakeCalendar(Calendar):
@@ -63,6 +66,7 @@ class FakeCalendar(Calendar):
     ) -> None:
         self.tz = ZoneInfo(timezone)
         self._slots: list[AvailableSlot] = []
+        self._bookings: list[dict] = []
 
         if slots is not None:
             self._slots.extend(slots)
@@ -101,14 +105,29 @@ class FakeCalendar(Calendar):
         attendee_name: str = "",
         phone_number: str = "",
     ) -> None:
-        # fake it by just removing it from our slots list
+        # fake it by just removing it from our slots list and adding to bookings
         self._slots = [slot for slot in self._slots if slot.start_time != start_time]
+        self._bookings.append(
+            {
+                "start": start_time.isoformat(),
+                "attendee": {"name": attendee_name, "phone": phone_number},
+            }
+        )
 
     async def list_available_slots(
         self, *, start_time: datetime.datetime, end_time: datetime.datetime
     ) -> list[AvailableSlot]:
         return [
             slot for slot in self._slots if start_time <= slot.start_time < end_time
+        ]
+
+    async def list_bookings(
+        self, *, start_time: datetime.datetime, end_time: datetime.datetime
+    ) -> list[dict]:
+        return [
+            b
+            for b in self._bookings
+            if start_time <= datetime.datetime.fromisoformat(b["start"]) < end_time
         ]
 
 
@@ -122,14 +141,21 @@ class CalComCalendar(Calendar):
         self.tz = ZoneInfo(timezone)
         self._api_key = api_key
 
-        try:
-            self._http_session = http_context.http_session()
-        except RuntimeError:
-            self._http_session = aiohttp.ClientSession()
+        self._http_session = None
 
         self._logger = logging.getLogger("cal.com")
 
     async def initialize(self) -> None:
+        if self._http_session is None:
+            # We import here to avoid issues if the loop isn't running yet during module load
+            import aiohttp
+            from livekit.agents.utils import http_context
+
+            try:
+                self._http_session = http_context.http_session()
+            except RuntimeError:
+                self._http_session = aiohttp.ClientSession()
+
         async with self._http_session.get(
             headers=self._build_headers(api_version="2024-06-14"), url=f"{BASE_URL}me/"
         ) as resp:
@@ -256,6 +282,26 @@ class CalComCalendar(Calendar):
                     )
 
         return available_slots
+
+    async def list_bookings(
+        self, *, start_time: datetime.datetime, end_time: datetime.datetime
+    ) -> list[dict]:
+        start_time = start_time.astimezone(datetime.timezone.utc)
+        end_time = end_time.astimezone(datetime.timezone.utc)
+        query = urlencode(
+            {
+                "eventTypeId": self._lk_event_id,
+                "afterStart": start_time.isoformat(),
+                "beforeEnd": end_time.isoformat(),
+            }
+        )
+        async with self._http_session.get(
+            headers=self._build_headers(api_version="2026-02-25"),
+            url=f"{BASE_URL}bookings/?{query}",
+        ) as resp:
+            resp.raise_for_status()
+            raw_data = (await resp.json())["data"]
+            return [b for b in raw_data if b.get("status") == "accepted"]
 
     def _build_headers(self, *, api_version: str | None = None) -> dict[str, str]:
         h = {"Authorization": f"Bearer {self._api_key}"}
