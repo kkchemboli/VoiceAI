@@ -186,27 +186,7 @@ async def update_config(config: ConfigUpdate):
 async def get_logs():
     """Fetch call logs"""
     if not supabase:
-        # Return dummy logs for UI testing if no supabase
-        return [
-            {
-                "id": 1,
-                "date": "2024-03-20",
-                "time": "10:30 AM",
-                "duration": "5m 20s",
-                "status": "Completed",
-                "customer": "Rajesh Kumar",
-                "summary": "Interested in Mobile Repairing course.",
-            },
-            {
-                "id": 2,
-                "date": "2024-03-20",
-                "time": "11:15 AM",
-                "duration": "3m 45s",
-                "status": "Completed",
-                "customer": "Anjali Singh",
-                "summary": "Asked about fee structure for iPhone course.",
-            },
-        ]
+        return []
 
     try:
         response = (
@@ -215,18 +195,41 @@ async def get_logs():
             .order("created_at", desc=True)
             .execute()
         )
-        return response.data
+        transformed = []
+        for log in response.data:
+            created = datetime.datetime.fromisoformat(
+                log["created_at"].replace("Z", "+00:00")
+            )
+            transformed.append(
+                {
+                    "id": log["id"],
+                    "date": created.strftime("%Y-%m-%d"),
+                    "time": created.strftime("%I:%M %p"),
+                    "phone": log.get("phone_number", ""),
+                    "customer": log.get("customer_name", ""),
+                    "summary": log.get("summary", ""),
+                    "duration": log.get("duration", ""),
+                    "status": log.get("status", "Completed"),
+                    "transcript": log.get("transcript", ""),
+                }
+            )
+        return transformed
     except Exception as e:
         print(f"Error fetching logs: {e}")
         return []
 
 
 @app.get("/api/appointments")
-async def get_appointments():
+async def get_appointments(year: int = None, month: int = None):
     """Fetch confirmed appointments from the calendar"""
     logger = logging.getLogger("calendar-api")
-    now = datetime.datetime.now(datetime.timezone.utc)
-    start_time = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    if year is not None and month is not None:
+        target_date = datetime.datetime(year, month, 1, tzinfo=datetime.timezone.utc)
+    else:
+        target_date = datetime.datetime.now(datetime.timezone.utc)
+
+    start_time = target_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     end_time = (start_time + datetime.timedelta(days=32)).replace(day=1)
 
     try:
@@ -235,15 +238,19 @@ async def get_appointments():
         )
         transformed = []
         for b in bookings:
-            attendee_data = b.get("attendees", [])
-            first_attendee = attendee_data[0] if attendee_data else {}
+            attendees = b.get("attendees", [])
             transformed.append(
                 {
                     "start": b.get("start"),
                     "attendee": {
-                        "name": first_attendee.get("name", "Unknown"),
-                        "phone": first_attendee.get("phoneNumber", ""),
+                        "name": attendees[0].get("name", "Unknown")
+                        if attendees
+                        else "Unknown",
+                        "phone": attendees[0].get("phoneNumber", "")
+                        if attendees
+                        else "",
                     },
+                    "seats_booked": len(attendees),
                 }
             )
         logger.info(f"Fetched {len(transformed)} bookings from Cal.com")
