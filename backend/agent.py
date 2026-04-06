@@ -929,7 +929,7 @@ async def entrypoint(ctx: JobContext):
             except Exception as e:
                 logger.error(f"Error saving call log to Supabase: {e}")
 
-        admin_phone = "917498952789"  # the number you provided
+        admin_phone = os.getenv("DEFAULT_TRANSFER_NUMBER")
 
         # 3. Ziper.io: Send Summary to Admin
         await send_ziper_whatsapp(admin_phone, admin_summary_text)
