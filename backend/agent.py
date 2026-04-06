@@ -5,6 +5,7 @@ load_dotenv()
 import asyncio
 import logging
 import os
+import re
 import aiohttp
 from typing import AsyncIterable, Optional
 
@@ -641,6 +642,8 @@ async def entrypoint(ctx: JobContext):
         logger.info(f"Connecting to room {ctx.room.name}")
         await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
         print("DEBUG: CONNECTED TO ROOM SUCCESS")
+
+        call_start_time = datetime.datetime.now()
     except Exception as e:
         print(f"DEBUG: CONNECTION FAILED: {e}")
         return
@@ -878,6 +881,12 @@ async def entrypoint(ctx: JobContext):
 
     # When the participant disconnects, trigger the summary flow
     async def send_summary():
+        call_end_time = datetime.datetime.now()
+        duration_seconds = int((call_end_time - call_start_time).total_seconds())
+        minutes = duration_seconds // 60
+        seconds = duration_seconds % 60
+        call_duration = f"{minutes}m {seconds}s"
+
         # Extract phone number from LiveKit Participant Identity (format: "sip_+9174...")
         user_phone = None
         if participant_identity and "sip_" in participant_identity:
@@ -897,12 +906,21 @@ async def entrypoint(ctx: JobContext):
                 from supabase import create_client
 
                 sb = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+                customer_name = booking_info.get("name", "")
+                if not customer_name and admin_summary_text:
+                    match = re.search(
+                        r"^name:\s*(.+)$", admin_summary_text, re.MULTILINE
+                    )
+                    if match:
+                        customer_name = match.group(1).strip()
+
                 sb.table("call_logs").insert(
                     {
                         "phone_number": user_phone or "",
-                        "customer_name": booking_info.get("name", "") or "",
+                        "customer_name": customer_name,
                         "summary": admin_summary_text,
-                        "duration": booking_info.get("time", "") or "",
+                        "duration": call_duration,
                         "status": "Completed",
                         "metadata": {"room_name": ctx.room.name},
                     }
