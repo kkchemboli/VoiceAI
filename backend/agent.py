@@ -234,9 +234,9 @@ async def fetch_agent_config_from_supabase():
             for item in response.data:
                 key = item.get("key")
                 value = item.get("value")
-                if key == "system_prompt":
+                if key == "system_prompt" and value:
                     config["system_prompt"] = value
-                elif key == "opening_greeting":
+                elif key == "opening_greeting" and value:
                     config["opening_greeting"] = value
 
         knowledge_response = (
@@ -244,7 +244,9 @@ async def fetch_agent_config_from_supabase():
         )
         if knowledge_response.data:
             config["knowledge_texts"] = [
-                item["content"] for item in knowledge_response.data
+                item["content"]
+                for item in knowledge_response.data
+                if item.get("content")
             ]
 
         logger.info("Successfully fetched config from Supabase")
