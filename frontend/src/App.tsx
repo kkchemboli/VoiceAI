@@ -9,9 +9,38 @@ import { CallLogsView } from './components/CallLogsView';
 
 type View = 'dashboard' | 'monitor' | 'agents' | 'knowledge' | 'calendar' | 'models' | 'api' | 'logs' | 'crm';
 
+interface CallLog {
+  id: number;
+  date: string;
+  time: string;
+  phone: string;
+  customer: string;
+  duration: string;
+  status: string;
+  summary: string;
+  transcript?: string;
+}
+
+interface Appointment {
+  start: string;
+  attendee: {
+    name: string;
+    phone: string;
+  };
+  seats_booked: number;
+}
+
 function App() {
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
   const [currentView, setCurrentView] = useState<View>('dashboard');
+  
+  // Missing State Definitions
+  const [agentPrompt, setAgentPrompt] = useState<string>('');
+  const [openingGreeting, setOpeningGreeting] = useState<string>('');
+  const [fullCallLogs, setFullCallLogs] = useState<CallLog[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
+  const [liveCalls] = useState<any[]>([]); // Future implementation
 
   const refreshData = () => {
     // Fetch Agent Config
@@ -95,7 +124,8 @@ function App() {
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   };
-  const filteredCalls = fullCallLogs.filter(log => log.date === formatDate(new Date()));
+  
+  const filteredCalls = fullCallLogs.filter((log: CallLog) => log.date === formatDate(new Date()));
 
   return (
     <div className="app-layout">

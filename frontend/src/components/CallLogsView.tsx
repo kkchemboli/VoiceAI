@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RefreshCw, FileText, Headphones, X } from 'lucide-react';
+import { RefreshCw, FileText, X } from 'lucide-react';
 import './CallLogsView.css';
 
 interface CallLog {
