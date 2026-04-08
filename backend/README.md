@@ -60,6 +60,15 @@ You can run the agent in development mode (which connects locally to your LiveKi
 python agent.py dev
 ```
 
+For production deployments (Docker/Coolify), run:
+
+```bash
+python agent.py start
+```
+
+> Required env vars in production: `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`.
+> If any of these are missing, the worker will fail fast at startup with a clear error.
+
 Once the agent shows `Connected to LiveKit`, you can test it directly via the **LiveKit Playground**:
 1. Go to your LiveKit Cloud Dashboard.
 2. Open the **Playground**.
