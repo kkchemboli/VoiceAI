@@ -13,5 +13,11 @@ export default defineConfig({
     // Required when running behind reverse proxies (like Coolify wildcard domains)
     // so requests from your public domain are accepted.
     allowedHosts: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      }
+    }
   },
 })

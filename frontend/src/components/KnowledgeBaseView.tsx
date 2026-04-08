@@ -10,7 +10,7 @@ export const KnowledgeBaseView: React.FC = () => {
   const [saving, setSaving] = useState<boolean>(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
-  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  const API_BASE = import.meta.env.VITE_API_URL || '';
 
   const fetchKnowledge = async () => {
     setLoading(true);
