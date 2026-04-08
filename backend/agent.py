@@ -921,7 +921,7 @@ async def entrypoint(ctx: JobContext):
                         "customer_name": customer_name,
                         "summary": admin_summary_text,
                         "duration": call_duration,
-                        "status": "Completed",
+                        "status": "booked" if booking_info.get("booked") else "Completed",
                         "metadata": {"room_name": ctx.room.name},
                     }
                 ).execute()

@@ -44,7 +44,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView })
           <Mic2 size={24} color="#6366f1" />
         </div>
         <div className="brand-info">
-          <h2>Voice Agent</h2>
+          <h2>Expert Institute Agent</h2>
           <p></p>
         </div>
       </div>

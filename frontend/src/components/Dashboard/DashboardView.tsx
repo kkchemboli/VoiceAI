@@ -62,7 +62,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     { title: 'TOTAL CALLS', value: totalCalls.toString(), subtitle: 'All time', icon: <Phone size={18} /> },
     { title: 'BOOKINGS MADE', value: bookings.toString(), subtitle: 'Today', icon: <Activity size={18} /> },
     { title: 'AVG DURATION', value: `${avgDuration}s`, subtitle: 'Seconds per call', icon: <Clock size={18} /> },
-    { title: 'BOOKING RATE', value: `${bookingRate}%`, subtitle: 'Conversion', icon: <Activity size={18} /> },
   ];
 
   return (
