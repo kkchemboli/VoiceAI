@@ -132,9 +132,6 @@ class KnowledgeUpdate(BaseModel):
     content: str
 
 
-@app.get("/")
-async def root():
-    return {"message": "Voice Agent API is running"}
 
 
 @app.get("/api/config")
