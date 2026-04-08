@@ -54,9 +54,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     ? Math.round(totalSeconds / filteredCalls.length) 
     : 0;
 
-  const bookingRate = totalCalls > 0 
-    ? Math.round((bookings / totalCalls) * 100) 
-    : 0;
 
   const stats = [
     { title: 'TOTAL CALLS', value: totalCalls.toString(), subtitle: 'All time', icon: <Phone size={18} /> },
