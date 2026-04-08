@@ -211,7 +211,7 @@ async def get_logs():
                     "customer": log.get("customer_name", ""),
                     "summary": log.get("summary", ""),
                     "duration": log.get("duration", ""),
-                    "status": log.get("status", "Completed"),
+                    "status": log.get("status", "completed"),
                     "transcript": log.get("transcript", ""),
                 }
             )

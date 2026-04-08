@@ -797,7 +797,7 @@ async def entrypoint(ctx: JobContext):
         stt=stt_node,
         llm=llm_node,
         tts=tts_node,
-        tools=fnc_ctx.flatten(),
+        tools=fnc_ctx.flatten() + [list_available_slots, schedule_demo_class],
         min_endpointing_delay=0.4,
         min_interruption_duration=0.3,
         preemptive_generation=False,
@@ -921,7 +921,7 @@ async def entrypoint(ctx: JobContext):
                         "customer_name": customer_name,
                         "summary": admin_summary_text,
                         "duration": call_duration,
-                        "status": "booked" if booking_info.get("booked") else "Completed",
+                        "status": "booked" if booking_info.get("booked") else "completed",
                         "metadata": {"room_name": ctx.room.name},
                     }
                 ).execute()

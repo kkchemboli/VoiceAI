@@ -57,7 +57,7 @@ export const CallLogsView: React.FC<CallLogsViewProps> = ({ logs, onRefresh }) =
                   <td className="text-primary">{log.duration}</td>
                   <td>
                     <span className={`status-pill ${log.status}`}>
-                      {log.status === 'booked' && '✓ '}
+                      {log.status?.toLowerCase() === 'booked' && '✓ '}
                       {log.status.charAt(0).toUpperCase() + log.status.slice(1)}
                     </span>
                   </td>

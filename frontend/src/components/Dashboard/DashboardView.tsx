@@ -44,7 +44,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   };
 
   // Calculate real stats
-  const bookings = filteredCalls.filter(c => c.status === 'booked').length;
+  const bookings = filteredCalls.filter(c => c.status?.toLowerCase() === 'booked').length;
   
   // Calculate average duration in seconds
   const totalSeconds = filteredCalls.reduce((acc, call) => {
