@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   api:
@@ -7,8 +6,6 @@ services:
       dockerfile: Dockerfile.api
     ports:
       - "8001:8000"
-    env_file:
-      - ./backend/.env
     environment:
       - TZ=Asia/Kolkata
     restart: unless-stopped
@@ -17,8 +14,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.agent
-    env_file:
-      - ./backend/.env
     environment:
       - TZ=Asia/Kolkata
     restart: unless-stopped
