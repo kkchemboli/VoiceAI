@@ -2,6 +2,8 @@ import os
 import logging
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from supabase import create_client, Client
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -307,6 +309,25 @@ async def update_knowledge(lang: str, data: KnowledgeUpdate):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
+# Serve frontend static files
+dist_path = os.path.join(os.path.dirname(__file__), "../frontend/dist")
+if os.path.exists(dist_path):
+    app.mount("/assets", StaticFiles(directory=os.path.join(dist_path, "assets")), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # Prevent intercepting API routes (API routes start with /api)
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404)
+            
+        file_path = os.path.join(dist_path, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        
+        # Fallback to index.html for SPA routing
+        return FileResponse(os.path.join(dist_path, "index.html"))
 
 if __name__ == "__main__":
     import uvicorn
