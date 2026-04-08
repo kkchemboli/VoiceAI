@@ -966,6 +966,15 @@ Reply here if you need any help or want to book a FREE demo class.
 
 
 if __name__ == "__main__":
+    required_env = ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"]
+    missing_env = [name for name in required_env if not os.getenv(name)]
+    if missing_env:
+        missing_text = ", ".join(missing_env)
+        raise RuntimeError(
+            "Missing required LiveKit environment variables: "
+            f"{missing_text}. Set them in your deployment environment before starting the agent."
+        )
+
     cli.run_app(
         WorkerOptions(
             agent_name="outbound_caller",
