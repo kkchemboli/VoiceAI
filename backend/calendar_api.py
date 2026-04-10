@@ -222,9 +222,9 @@ class CalComCalendar(Calendar):
                 "name": attendee_name,
                 "email": f"{normalized_phone.replace('+', '')}@expertinstitute.in",
                 "phoneNumber": normalized_phone,
+                "timeZone": str(self.tz),
+                "language": "hi",
             },
-            "timeZone": str(self.tz),
-            "language": "hi",
             "metadata": {},
         }
 
