@@ -220,6 +220,7 @@ class CalComCalendar(Calendar):
             "eventTypeId": self._lk_event_id,
             "attendee": {
                 "name": attendee_name,
+                "email": f"{normalized_phone.replace('+', '')}@expertinstitute.in",
                 "phoneNumber": normalized_phone,
             },
             "timeZone": str(self.tz),
@@ -231,7 +232,7 @@ class CalComCalendar(Calendar):
 
         try:
             async with self._http_session.post(
-                headers=self._build_headers(api_version="2024-06-14"),
+                headers=self._build_headers(api_version="2026-02-25"),
                 url=f"{BASE_URL}bookings",
                 json=payload,
             ) as resp:
@@ -312,7 +313,10 @@ class CalComCalendar(Calendar):
             return [b for b in raw_data if b.get("status") == "accepted"]
 
     def _build_headers(self, *, api_version: str | None = None) -> dict[str, str]:
-        h = {"Authorization": f"Bearer {self._api_key}"}
+        h = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+        }
         if api_version:
             h["cal-api-version"] = api_version
         return h

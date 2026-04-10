@@ -298,9 +298,9 @@ async def update_knowledge(lang: str, data: KnowledgeUpdate):
         raise HTTPException(status_code=503, detail="Supabase not configured")
 
     try:
-        # Upsert based on language column
+        # Upsert based on language column to avoid unique constraint violations
         supabase.table("knowledge_base").upsert(
-            {"language": lang, "content": data.content}
+            {"language": lang, "content": data.content}, on_conflict="language"
         ).execute()
         return {"status": "success", "message": f"Knowledge base ({lang}) updated"}
     except Exception as e:
