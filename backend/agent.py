@@ -722,13 +722,16 @@ async def entrypoint(ctx: JobContext):
             return f"Error: Slot {slot_id} not found. Please list_available_slots again or ask the user for a valid time."
 
         try:
-            await cal.schedule_appointment(
+            result = await cal.schedule_appointment(
                 start_time=slot.start_time,
                 attendee_name=name,
                 phone_number=phone_number,
             )
-        except SlotUnavailableError:
-            return "Error: This slot isn't available anymore."
+            if result.startswith("Error"):
+                return result
+        except Exception as e:
+            logger.error(f"Unexpected error in schedule_demo_class: {e}")
+            return f"Error: An unexpected error occurred while booking. ({str(e)})"
 
         local = slot.start_time.astimezone(tz_info)
         now = datetime.datetime.now(tz_info)
@@ -954,7 +957,18 @@ Reply here if you need any help or want to book a FREE demo class.
 📞 9718888700"""
             await send_ziper_whatsapp(user_phone, greeting_msg)
 
-    ctx.add_shutdown_callback(send_summary)
+    # We wrap the shutdown callback to ensure it doesn't block forever
+    # and handles its own errors gracefully.
+    async def safe_shutdown():
+        try:
+            # Setting a reasonable timeout for the summary/whatsapp tasks
+            await asyncio.wait_for(send_summary(), timeout=10)
+        except asyncio.TimeoutError:
+            logger.warning("Summary task timed out during shutdown.")
+        except Exception as e:
+            logger.error(f"Error during shutdown summary: {e}")
+
+    ctx.add_shutdown_callback(safe_shutdown)
 
     # Keep the entrypoint alive while the room is connected to prevent early job exit
     logger.info("Greeting phase finished. Entrypoint persistence active.")

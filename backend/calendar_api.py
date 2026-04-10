@@ -17,12 +17,20 @@ from livekit.agents.utils import http_context
 
 
 def _normalize_phone_number(phone_number: str) -> str:
-    phone = phone_number.strip()
-    if phone.startswith("+91"):
+    """
+    Strictly normalizes to E.164. Ensuring the '+' prefix is always present.
+    """
+    phone = str(phone_number).strip().replace(" ", "").replace("-", "")
+    if phone.startswith("+"):
         return phone
-    if phone.startswith("91"):
+    # If it starts with 91 but no +, add +
+    if phone.startswith("91") and len(phone) >= 12:
         return "+" + phone
-    return "+91" + phone
+    # Fallback: assume India if 10 digits
+    if len(phone) == 10:
+        return "+91" + phone
+    # Last resort: just add + if missing
+    return "+" + phone if phone else ""
 
 
 class SlotUnavailableError(Exception):
@@ -51,7 +59,7 @@ class Calendar(Protocol):
         start_time: datetime.datetime,
         attendee_name: str = "",
         phone_number: str = "",
-    ) -> None: ...
+    ) -> str: ...
     async def list_available_slots(
         self, *, start_time: datetime.datetime, end_time: datetime.datetime
     ) -> list[AvailableSlot]: ...
@@ -104,7 +112,7 @@ class FakeCalendar(Calendar):
         start_time: datetime.datetime,
         attendee_name: str = "",
         phone_number: str = "",
-    ) -> None:
+    ) -> str:
         # fake it by just removing it from our slots list and adding to bookings
         self._slots = [slot for slot in self._slots if slot.start_time != start_time]
         self._bookings.append(
@@ -113,6 +121,7 @@ class FakeCalendar(Calendar):
                 "attendee": {"name": attendee_name, "phone": phone_number},
             }
         )
+        return "Appointment scheduled successfully (Fake)."
 
     async def list_available_slots(
         self, *, start_time: datetime.datetime, end_time: datetime.datetime
@@ -202,7 +211,7 @@ class CalComCalendar(Calendar):
         start_time: datetime.datetime,
         attendee_name: str = "",
         phone_number: str = "",
-    ) -> None:
+    ) -> str:
         start_time = start_time.astimezone(datetime.timezone.utc)
         normalized_phone = _normalize_phone_number(phone_number)
 
@@ -216,39 +225,36 @@ class CalComCalendar(Calendar):
             "eventTypeId": self._lk_event_id,
         }
 
-        async with self._http_session.post(
-            headers=self._build_headers(api_version="2026-02-25"),
-            url=f"{BASE_URL}bookings",
-            json=payload,
-        ) as resp:
-            self._logger.debug(f"Request payload: {payload}")
-            self._logger.debug(f"Booking response status: {resp.status}")
-            if resp.status >= 400:
-                data = await resp.json()
-                self._logger.warning(f"Booking error response: {data}")
-                error_info = data.get("error", {})
-                message = (
-                    error_info.get("message", "")
-                    if isinstance(error_info, dict)
-                    else str(error_info)
-                )
-                if "not available" in message.lower() or "conflict" in message.lower():
-                    raise SlotUnavailableError(message)
-                resp.raise_for_status()
+        self._logger.info(f"CAL.COM PAYLOAD: {payload}")
 
-            if resp.status != 204:
-                data = await resp.json()
-                if error := data.get("error"):
+        try:
+            async with self._http_session.post(
+                headers=self._build_headers(api_version="2024-06-14"),
+                url=f"{BASE_URL}bookings",
+                json=payload,
+            ) as resp:
+                self._logger.info(f"Booking response status: {resp.status}")
+                
+                if resp.status >= 400:
+                    data = await resp.json()
+                    self._logger.warning(f"Booking error response: {data}")
+                    error_info = data.get("error", {})
                     message = (
-                        error.get("message", str(error))
-                        if isinstance(error, dict)
-                        else str(error)
+                        error_info.get("message", "")
+                        if isinstance(error_info, dict)
+                        else str(error_info)
                     )
-                    if (
-                        "not available" in message.lower()
-                        or "conflict" in message.lower()
-                    ):
-                        raise SlotUnavailableError(message)
+                    
+                    if "not available" in message.lower() or "conflict" in message.lower():
+                        return f"Error: This slot is no longer available. ({message})"
+                    
+                    return f"Error: Cal.com API returned {resp.status}. Message: {message}"
+
+                return "Appointment scheduled successfully."
+
+        except Exception as e:
+            self._logger.error(f"Exception during scheduling: {e}")
+            return f"Error: Failed to connect to booking system. {str(e)}"
 
     async def list_available_slots(
         self, *, start_time: datetime.datetime, end_time: datetime.datetime
