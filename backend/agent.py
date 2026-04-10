@@ -787,7 +787,6 @@ async def entrypoint(ctx: JobContext):
         llm=llm_node,
         stt=stt_node,
         tts=tts_node,
-        tools=[list_available_slots, schedule_demo_class],
         fnc_ctx=fnc_ctx,
         rag_engine=rag_engine,
     )
