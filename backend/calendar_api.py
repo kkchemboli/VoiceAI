@@ -217,12 +217,14 @@ class CalComCalendar(Calendar):
 
         payload = {
             "start": start_time.isoformat(),
+            "eventTypeId": self._lk_event_id,
             "attendee": {
                 "name": attendee_name,
                 "phoneNumber": normalized_phone,
-                "timeZone": str(self.tz),
             },
-            "eventTypeId": self._lk_event_id,
+            "timeZone": str(self.tz),
+            "language": "hi",
+            "metadata": {},
         }
 
         self._logger.info(f"CAL.COM PAYLOAD: {payload}")
