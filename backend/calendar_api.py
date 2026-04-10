@@ -223,7 +223,7 @@ class CalComCalendar(Calendar):
                 "email": f"{normalized_phone.replace('+', '')}@expertinstitute.in",
                 "phoneNumber": normalized_phone,
                 "timeZone": str(self.tz),
-                "language": "hi",
+                "language": "en",
             },
             "metadata": {},
         }
