@@ -24,7 +24,8 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, List
+import aiohttp
 
 import numpy as np
 
@@ -174,8 +175,15 @@ class RAGEngine:
                 logger.warning(f"RAG: Knowledge file not found: {path}")
                 continue
 
-            with open(path, "r", encoding="utf-8") as f:
-                content = f.read()
+            content = ""
+            if path.lower().endswith(".pdf"):
+                logger.info(f"RAG: Extracting text from PDF: {path}")
+                content = self._extract_text_from_pdf(path)
+            else:
+                with open(path, "r", encoding="utf-8") as f:
+                    content = f.read()
+
+            if content.strip():
                 all_text += content + "\n\n"
                 chunks = self._chunker.chunk(content)
                 all_chunks.extend(chunks)
@@ -321,9 +329,43 @@ class RAGEngine:
             scores=matched_scores,
         )
 
+    async def load_knowledge_from_sheet(self, csv_url: str) -> None:
+        """
+        Fetch a Google Sheet (published as CSV) and index its content.
+        This allows for real-time knowledge updates without restarting the agent code.
+        """
+        logger.info(f"RAG: Fetching live knowledge from Google Sheet: {csv_url}")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(csv_url) as resp:
+                    if resp.status == 200:
+                        csv_text = await resp.text()
+                        # Treat each row or significant block as knowledge
+                        await self.load_knowledge_from_text([csv_text])
+                        logger.info("RAG: Google Sheet indexed successfully.")
+                    else:
+                        logger.error(f"RAG: Failed to fetch Google Sheet: Status {resp.status}")
+        except Exception as e:
+            logger.error(f"RAG: Error loading Google Sheet: {e}")
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _extract_text_from_pdf(self, path: str) -> str:
+        """Extract plain text from a PDF file using pypdf."""
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(path)
+            text = ""
+            for page in reader.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+            return text
+        except Exception as e:
+            logger.error(f"RAG: Error reading PDF {path}: {e}")
+            return ""
 
     async def _embed_texts(self, texts: list[str]) -> np.ndarray:
         """Batch-embed a list of texts. Returns float32 numpy array (N, EMBED_DIM)."""

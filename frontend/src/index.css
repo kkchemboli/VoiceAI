@@ -20,8 +20,8 @@ body {
 }
 
 body {
-  min-height: 150vh;
-  background: radial-gradient(circle at top, #059669 0%, #064e3b 25%, #022c22 50%, #000000 90%);
+  min-height: 100vh;
+  background: radial-gradient(circle at top right, #1e1b4b 0%, #0f172a 40%, #020617 100%);
   background-attachment: fixed;
   position: relative;
   overflow-x: hidden;
@@ -30,6 +30,7 @@ body {
 .app-layout {
   display: flex;
   min-height: 100vh;
+  backdrop-filter: blur(50px);
 }
 
 .content-area {
@@ -37,6 +38,7 @@ body {
   margin-left: 260px;
   position: relative;
   min-height: 100vh;
+  z-index: 1;
 }
 
 /* Faint "OWNER" watermark */

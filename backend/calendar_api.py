@@ -64,7 +64,12 @@ class FakeCalendar(Calendar):
     def __init__(
         self, *, timezone: str, slots: list[AvailableSlot] | None = None
     ) -> None:
-        self.tz = ZoneInfo(timezone)
+        try:
+            from zoneinfo import ZoneInfo
+            self.tz = ZoneInfo(timezone)
+        except Exception:
+            # Robust fallback for Windows
+            self.tz = datetime.timezone(datetime.timedelta(hours=5, minutes=30)) if "Kolkata" in timezone else datetime.timezone.utc
         self._slots: list[AvailableSlot] = []
         self._bookings: list[dict] = []
 
@@ -138,7 +143,12 @@ BASE_URL = "https://api.cal.com/v2/"
 
 class CalComCalendar(Calendar):
     def __init__(self, *, api_key: str, timezone: str) -> None:
-        self.tz = ZoneInfo(timezone)
+        try:
+            from zoneinfo import ZoneInfo
+            self.tz = ZoneInfo(timezone)
+        except Exception:
+            # Robust fallback for Windows
+            self.tz = datetime.timezone(datetime.timedelta(hours=5, minutes=30)) if "Kolkata" in timezone else datetime.timezone.utc
         self._api_key = api_key
 
         self._http_session = None

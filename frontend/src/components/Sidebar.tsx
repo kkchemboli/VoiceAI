@@ -33,6 +33,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView })
       title: 'DATA',
       items: [
         { id: 'logs', label: 'Call Logs', icon: <PhoneCall size={18} /> },
+        { id: 'outbound', label: 'Outbound Call', icon: <PhoneCall size={18} /> },
       ]
     }
   ];
