@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import aiohttp
+import json
 from typing import AsyncIterable, Optional
 
 from rag_engine import RAGEngine
@@ -143,6 +144,49 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 DEFAULT_GREETING = (
     "Hello! Thank you for calling Expert Institute. How can I help you today?"
 )
+
+OUTBOUND_SYSTEM_PROMPT = """### ROLE & PERSONALITY
+You are Neha, a helpful and natural conversational AI agent for 'Expert Institute of Advance Technologies Pvt. Ltd.', New Delhi.
+You are making an OUTBOUND call to a potential student who has inquired about your courses.
+NEVER disclose that you are an AI Agent or a Machine Learning Model even if you're asked always just say you're an employee of Expert Institute.
+GENDER (CRITICAL): FEMALE. Use female Hindi grammar (e.g., 'रही हूँ', 'करती हूँ'). NEVER use male forms.
+TONE: Realistic, human-like, engaging, and professional.
+
+### LANGUAGE RULES (CRITICAL)
+1. START: Always start the call in English.
+2. ENGLISH MODE: If the user chooses English, speak ONLY in professional, helpful English.
+3. HINDI MODE: If the user chooses Hindi, switch to the HINGLISH & SCRIPT RULES below.
+4. If you think the user is speaking any other language, use Hindi and switch to the HINGLISH & SCRIPT RULES below.
+
+### HINGLISH & SCRIPT RULES (HINDI MODE ONLY)
+- Mix Hindi + English naturally. 
+- Use Roman script (English letters) for all responses.
+- Speak like a friendly 20–30 year old Indian customer support agent.
+
+### PHASE 1: GREETING & PURPOSE
+1. GREET IN ENGLISH: 
+   "Hi, am I speaking with [Name]?" 
+   (Wait for confirmation)
+2. PROCEED AFTER CONFIRMATION:
+   "Hi! I'm Neha calling from Expert Institute, New Delhi. I'm calling because you recently showed interest in our technical training programs. Is this a good time to speak?"
+3. If they are busy: "No problem! When would be a better time to call you back?"
+4. If they are free: Proceed to list the courses.
+
+### PHASE 2: COURSE LISTING & INTEREST CHECK
+1. INTRODUCE COURSES:
+   "Great! As you might know, we offer specialized courses in Mobile Repairing, iPhone, Laptop, MacBook, CCTV, LED TV, and AC PCB repairing."
+2. CHECK INTEREST:
+   "Was there a specific course you were thinking about starting?"
+3. Refer to [KNOWLEDGE CONTEXT] for any specific course details or benefits.
+
+### PHASE 3: THE HOOK (FREE DEMO CLASS)
+1. After providing initial info, PUSH for the demo:
+   "Since you've already inquired, I'd highly recommend booking a FREE demo class. It's the best way to see our practical labs and teaching style. Should I check the available slots for you?"
+
+### CONVERSATIONAL CONSTRAINTS
+- No paragraphs. Keep it light and interactive.
+- Use back-channeling ('hmm', 'right').
+"""
 
 DEFAULT_SYSTEM_PROMPT = """### ROLE & PERSONALITY
 You are a helpful, natural conversational AI agent for 'Expert Institute of Advance Technologies Pvt. Ltd.', New Delhi.
@@ -300,18 +344,21 @@ async def fetch_agent_config_from_supabase():
         config = {
             "system_prompt": DEFAULT_SYSTEM_PROMPT,
             "opening_greeting": DEFAULT_GREETING,
+            "outbound_system_prompt": DEFAULT_SYSTEM_PROMPT,
+            "outbound_opening_greeting": "Hi, I am calling from Expert Institute. How can I help you?",
             "knowledge_texts": [],
         }
 
-        response = supabase.table("agent_config").select("key", "value").execute()
-        if response.data:
-            for item in response.data:
-                key = item.get("key")
-                value = item.get("value")
-                if key == "system_prompt" and value:
-                    config["system_prompt"] = value
-                elif key == "opening_greeting" and value:
-                    config["opening_greeting"] = value
+        try:
+            response = supabase.table("agent_config").select("key", "value").execute()
+            if response.data:
+                for item in response.data:
+                    key = item.get("key")
+                    value = item.get("value")
+                    if key in config and value:
+                        config[key] = value
+        except Exception as e:
+            logger.error(f"Error fetching config from agent_config table: {e}")
 
         knowledge_response = (
             supabase.table("knowledge_base").select("content").execute()
@@ -617,26 +664,8 @@ def prewarm(proc: JobProcess):
     except Exception as e:
         print(f"DEBUG: SILERO VAD LOAD FAILED: {e}")
 
-    # --- RAG Initialisation ---
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-    if openai_api_key:
-        try:
-            import asyncio as _asyncio
-
-            rag = RAGEngine(openai_api_key=openai_api_key)
-            kb_paths = [
-                os.path.join(os.path.dirname(__file__), "knowledge.txt"),
-                os.path.join(os.path.dirname(__file__), "knowledge_hi.txt"),
-            ]
-            _asyncio.get_event_loop().run_until_complete(rag.load_knowledge(kb_paths))
-            proc.userdata["rag"] = rag
-            print("DEBUG: MULTILINGUAL RAG ENGINE LOADED SUCCESSFULLY (EN + HI)")
-        except Exception as e:
-            print(f"DEBUG: RAG ENGINE LOAD FAILED: {e}")
-            proc.userdata["rag"] = None
-    else:
-        print("DEBUG: OPENAI_API_KEY not set — RAG disabled")
-        proc.userdata["rag"] = None
+    # RAG is now loaded in entrypoint for loop stability.
+    pass
 
 
 async def entrypoint(ctx: JobContext):
@@ -648,13 +677,75 @@ async def entrypoint(ctx: JobContext):
         print("DEBUG: CONNECTED TO ROOM SUCCESS")
 
         call_start_time = datetime.datetime.now()
+        
+        # --- Safe RAG Initialization (Inside Entrypoint) ---
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        if openai_api_key and "rag" not in ctx.proc.userdata:
+            try:
+                rag = RAGEngine(openai_api_key=openai_api_key)
+                
+                # Automatically find all local TXT and PDF knowledge files
+                base_dir = os.path.dirname(__file__)
+                kb_files = [
+                    os.path.join(base_dir, f) 
+                    for f in os.listdir(base_dir) 
+                    if f.endswith((".txt", ".pdf"))
+                ]
+                
+                if kb_files:
+                    await rag.load_knowledge(kb_files)
+                    logger.info(f"RAG: Indexed {len(kb_files)} local files (TXT/PDF).")
+                
+                # Check for Google Sheet URL (Safely)
+                if sheet_url := os.getenv("GOOGLE_SHEET_URL"):
+                    try:
+                        await rag.load_knowledge_from_sheet(sheet_url)
+                    except Exception as e:
+                        logger.error(f"RAG: Failed to load Google Sheet ({e}), continuing without it.")
+                
+                ctx.proc.userdata["rag"] = rag
+                print("DEBUG: UNIVERSAL RAG ENGINE LOADED SUCCESSFULLY (PDF + TXT + SHEETS)")
+            except Exception as e:
+                print(f"DEBUG: RAG ENGINE INIT FAILED: {e}")
     except Exception as e:
         print(f"DEBUG: CONNECTION FAILED: {e}")
         return
 
     agent_config = await fetch_agent_config_from_supabase()
-    system_prompt = agent_config["system_prompt"]
-    greeting_text = agent_config["opening_greeting"]
+    
+    # --- Metadata & Persona Selection ---
+    recipient_name = "Student"
+    target_course = "our technical programs"
+    
+    # Safely handle metadata (especially for Inbound calls where it might be empty)
+    if ctx.job.metadata and ctx.job.metadata.strip():
+        try:
+            meta = json.loads(ctx.job.metadata)
+            recipient_name = meta.get("recipientName", recipient_name)
+            target_course = meta.get("targetCourse", target_course)
+            logger.info(f"Metadata detected: Calling {recipient_name} for {target_course}")
+        except Exception as e:
+            logger.warning(f"Metadata provided but failed to parse: {e}")
+            logger.debug(f"Raw metadata was: '{ctx.job.metadata}'")
+
+    # Detect call direction (Inbound vs Outbound)
+    room_name = ctx.room.name.lower()
+    is_outbound = "outbound" in room_name or room_name.startswith("+") or "sip" in room_name
+    
+    if is_outbound:
+        logger.info("OUTBOUND call detected. Using refined outbound persona.")
+        # Inject dynamic details into prompt
+        system_prompt = OUTBOUND_SYSTEM_PROMPT.replace("[Name]", recipient_name)
+        system_prompt += f"\n\nCURRENT CONTEXT:\nYou are calling {recipient_name} specifically about the {target_course} course they inquired about."
+        
+        greeting_text = f"Hi, am I speaking with {recipient_name}?"
+        print(f"DEBUG: OUTBOUND GREETING SELECTED: '{greeting_text}'")
+    else:
+        logger.info("INBOUND call detected. Using standard configuration.")
+        system_prompt = agent_config.get("system_prompt", DEFAULT_SYSTEM_PROMPT)
+        greeting_text = agent_config.get("opening_greeting", DEFAULT_GREETING)
+        print(f"DEBUG: INBOUND GREETING SELECTED: '{greeting_text}'")
+        
     knowledge_texts = agent_config["knowledge_texts"]
 
     rag_engine: Optional[RAGEngine] = ctx.proc.userdata.get("rag")
@@ -675,15 +766,15 @@ async def entrypoint(ctx: JobContext):
     initial_ctx = llm.ChatContext()
     initial_ctx.add_message(role="system", content=system_prompt)
 
-    # Calendar Initialization
+    # Calendar Initialization - Robust version for Windows
     timezone = "Asia/Kolkata"
-    tz_info = ZoneInfo(timezone)
-    cal_event_id = os.getenv("CAL_EVENT_ID")
-    if cal_event_id:
-        try:
-            cal_event_id = int(cal_event_id)
-        except ValueError:
-            cal_event_id = None
+    try:
+        from zoneinfo import ZoneInfo
+        tz_info = ZoneInfo(timezone)
+    except Exception as e:
+        logger.warning(f"ZoneInfo database missing or error ({e}). Using hardcoded Indian Offset (+5:30).")
+        # Hardcoded Asia/Kolkata offset (UTC + 5.5 hours)
+        tz_info = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 
     if cal_api_key := os.getenv("CAL_API_KEY", None):
         logger.info(f"CAL_API_KEY detected, using cal.com calendar (event_id: {cal_event_id})")
@@ -862,18 +953,17 @@ async def entrypoint(ctx: JobContext):
             )
 
     # Wait for the first participant to join
-    print("DEBUG: WAITING FOR ANY PARTICIPANT TO JOIN...")
+    print("DEBUG: WAITING FOR USER TO ANSWER...")
     participant_identity = None
     try:
-        # For outbound calls, the participant might already be in the room
-        # ctx.wait_for_participant() returns immediately if one exists
-        participant = await asyncio.wait_for(ctx.wait_for_participant(), timeout=15)
+        # For outbound calls, the participant joins the room only when the phone is answered
+        participant = await asyncio.wait_for(ctx.wait_for_participant(), timeout=30)
         participant_identity = participant.identity
-        logger.info(f"Participant detected: {participant_identity}")
-        print(f"DEBUG: PARTICIPANT JOINED: {participant_identity}")
+        logger.info(f"User answered! Identity: {participant_identity}")
+        print(f"DEBUG: USER ANSWERED: {participant_identity}")
     except asyncio.TimeoutError:
-        print("DEBUG: TIMEOUT WAITING FOR PARTICIPANT - Proceeding with session start")
-        logger.warning("No participant joined within 15s. Starting session anyway.")
+        print("DEBUG: TIMEOUT WAITING FOR ANSWER - Starting session anyway")
+        logger.warning("No answer detected within 30s.")
 
     await session.start(agent, room=ctx.room)
     print("DEBUG: SESSION STARTED. PREPARING GREETING...")
@@ -886,8 +976,13 @@ async def entrypoint(ctx: JobContext):
     session.history.add_message(role="assistant", content=[greeting_text])
 
     try:
+        if is_outbound:
+            # SIP calls need a moment for the audio bridge to clear after answering
+            print("DEBUG: OUTBOUND - Waiting 2.0s for audio bridge to stabilize...")
+            await asyncio.sleep(2.0)
+            
         session.say(greeting_text, allow_interruptions=True)
-        print("DEBUG: GREETING SENT.")
+        print(f"DEBUG: GREETING SENT: '{greeting_text}'")
     except (RuntimeError, Exception) as e:
         logger.warning(f"Could not send initial greeting: {e}")
         print(f"DEBUG: GREETING FAILED: {e}")

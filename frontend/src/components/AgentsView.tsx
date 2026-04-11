@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import './AgentsView.css';
 
 interface AgentsViewProps {
@@ -6,6 +6,10 @@ interface AgentsViewProps {
   setAgentPrompt: (prompt: string) => void;
   openingGreeting: string;
   setOpeningGreeting: (greeting: string) => void;
+  outboundAgentPrompt: string;
+  setOutboundAgentPrompt: (prompt: string) => void;
+  outboundOpeningGreeting: string;
+  setOutboundOpeningGreeting: (greeting: string) => void;
   onSave: () => void;
 }
 
@@ -14,48 +18,95 @@ export const AgentsView: React.FC<AgentsViewProps> = ({
   setAgentPrompt,
   openingGreeting,
   setOpeningGreeting,
+  outboundAgentPrompt,
+  setOutboundAgentPrompt,
+  outboundOpeningGreeting,
+  setOutboundOpeningGreeting,
   onSave
 }) => {
+  const [activeTab, setActiveTab] = useState<'inbound' | 'outbound'>('inbound');
+
   return (
     <div className="main-container">
       <header className="view-header">
         <h1 className="title">Agent Settings</h1>
-        <p className="subtitle">Configure AI personality, opening line, and sensitivity</p>
+        <p className="subtitle">Configure AI personality and behavior for different call types</p>
       </header>
 
-      <div className="settings-container">
-        {/* Opening Greeting Section */}
-        <section className="settings-card-alt">
-          <h2 className="card-subtitle">Opening Greeting</h2>
-          <div className="input-field-group">
-            <label className="input-label-small">FIRST LINE (WHAT THE AGENT SAYS WHEN A CALL CONNECTS)</label>
-            <textarea 
-              className="input-field-dark height-sm" 
-              value={openingGreeting}
-              onChange={(e) => setOpeningGreeting(e.target.value)}
-              placeholder="Namaste!..."
-            />
-            <p className="field-hint">This is the very first thing the agent says. Keep it concise and warm.</p>
-          </div>
-        </section>
+      <div className="tab-navigation">
+        <button 
+          className={`tab-btn ${activeTab === 'inbound' ? 'active' : ''}`}
+          onClick={() => setActiveTab('inbound')}
+        >
+          Inbound Calls
+        </button>
+        <button 
+          className={`tab-btn ${activeTab === 'outbound' ? 'active' : ''}`}
+          onClick={() => setActiveTab('outbound')}
+        >
+          Outbound Calls
+        </button>
+      </div>
 
-        {/* System Prompt Section */}
-        <section className="settings-card-alt">
-          <h2 className="card-subtitle">System Prompt</h2>
-          <div className="input-field-group">
-            <label className="input-label-small">MASTER SYSTEM PROMPT</label>
-            <textarea 
-              className="input-field-dark height-lg" 
-              value={agentPrompt}
-              onChange={(e) => setAgentPrompt(e.target.value)}
-              placeholder="You are Priya..."
-            />
-            <p className="field-hint">Date and time context are injected automatically. Do not hardcode today's date.</p>
-          </div>
-        </section>
+      <div className="settings-container">
+        {activeTab === 'inbound' ? (
+          <>
+            <section className="settings-card-alt animate-fade-in">
+              <h2 className="card-subtitle">Inbound: Opening Greeting</h2>
+              <div className="input-field-group">
+                <label className="input-label-small">FIRST LINE (WHEN CUSTOMER CALLS YOU)</label>
+                <textarea 
+                  className="input-field-dark height-sm" 
+                  value={openingGreeting}
+                  onChange={(e) => setOpeningGreeting(e.target.value)}
+                  placeholder="Namaste! Thanks for calling Expert Institute..."
+                />
+              </div>
+            </section>
+
+            <section className="settings-card-alt animate-fade-in">
+              <h2 className="card-subtitle">Inbound: System Prompt</h2>
+              <div className="input-field-group">
+                <label className="input-label-small">MASTER SYSTEM PROMPT (INBOUND RULES)</label>
+                <textarea 
+                  className="input-field-dark height-lg" 
+                  value={agentPrompt}
+                  onChange={(e) => setAgentPrompt(e.target.value)}
+                />
+              </div>
+            </section>
+          </>
+        ) : (
+          <>
+            <section className="settings-card-alt animate-fade-in">
+              <h2 className="card-subtitle">Outbound: Opening Greeting</h2>
+              <div className="input-field-group">
+                <label className="input-label-small">FIRST LINE (WHEN YOU CALL CUSTOMER)</label>
+                <textarea 
+                  className="input-field-dark height-sm" 
+                  value={outboundOpeningGreeting}
+                  onChange={(e) => setOutboundOpeningGreeting(e.target.value)}
+                  placeholder="Hello, I am calling from Expert Institute..."
+                />
+              </div>
+            </section>
+
+            <section className="settings-card-alt animate-fade-in">
+              <h2 className="card-subtitle">Outbound: System Prompt</h2>
+              <div className="input-field-group">
+                <label className="input-label-small">MASTER SYSTEM PROMPT (OUTBOUND RULES)</label>
+                <textarea 
+                  className="input-field-dark height-lg" 
+                  value={outboundAgentPrompt}
+                  onChange={(e) => setOutboundAgentPrompt(e.target.value)}
+                />
+              </div>
+            </section>
+          </>
+        )}
 
         <div className="footer-actions">
-          <button className="btn-primary-glow" onClick={onSave}>Save Agent Settings</button>
+          <button className="btn-primary-glow" onClick={onSave}>Save All Settings</button>
         </div>
       </div>
     </div>

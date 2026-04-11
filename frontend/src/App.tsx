@@ -6,8 +6,9 @@ import { AgentsView } from './components/AgentsView';
 import { KnowledgeBaseView } from './components/KnowledgeBaseView';
 import { CalendarView } from './components/Calendar';
 import { CallLogsView } from './components/CallLogsView';
+import { OutboundView } from './components/Outbound/OutboundView';
 
-type View = 'dashboard' | 'monitor' | 'agents' | 'knowledge' | 'calendar' | 'models' | 'api' | 'logs' | 'crm';
+type View = 'dashboard' | 'monitor' | 'agents' | 'knowledge' | 'calendar' | 'models' | 'api' | 'logs' | 'crm' | 'outbound';
 
 interface CallLog {
   id: number;
@@ -34,9 +35,14 @@ function App() {
   const API_BASE = import.meta.env.VITE_API_URL || '';
   const [currentView, setCurrentView] = useState<View>('dashboard');
   
-  // Missing State Definitions
+  // Inbound State
   const [agentPrompt, setAgentPrompt] = useState<string>('');
   const [openingGreeting, setOpeningGreeting] = useState<string>('');
+  
+  // Outbound State
+  const [outboundAgentPrompt, setOutboundAgentPrompt] = useState<string>('');
+  const [outboundOpeningGreeting, setOutboundOpeningGreeting] = useState<string>('');
+  
   const [fullCallLogs, setFullCallLogs] = useState<CallLog[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
@@ -49,6 +55,8 @@ function App() {
       .then(data => {
         setAgentPrompt(data.system_prompt || "");
         setOpeningGreeting(data.opening_greeting || "");
+        setOutboundAgentPrompt(data.outbound_system_prompt || "");
+        setOutboundOpeningGreeting(data.outbound_opening_greeting || "");
       })
       .catch(err => console.error("Failed to fetch agent config:", err));
 
@@ -96,7 +104,9 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           system_prompt: agentPrompt,
-          opening_greeting: openingGreeting
+          opening_greeting: openingGreeting,
+          outbound_system_prompt: outboundAgentPrompt,
+          outbound_opening_greeting: outboundOpeningGreeting
         }),
       });
       if (response.ok) {
@@ -161,12 +171,18 @@ function App() {
             setAgentPrompt={setAgentPrompt}
             openingGreeting={openingGreeting}
             setOpeningGreeting={setOpeningGreeting}
+            outboundAgentPrompt={outboundAgentPrompt}
+            setOutboundAgentPrompt={setOutboundAgentPrompt}
+            outboundOpeningGreeting={outboundOpeningGreeting}
+            setOutboundOpeningGreeting={setOutboundOpeningGreeting}
             onSave={saveAgentSettings}
           />
         )}
 
         {currentView === 'knowledge' && <KnowledgeBaseView />}
         
+        {currentView === 'outbound' && <OutboundView />}
+
         {(currentView === 'crm') && (
           <div className="view-container">
             <h1 className="title">CRM Contacts</h1>
