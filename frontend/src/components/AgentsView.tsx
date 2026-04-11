@@ -52,7 +52,10 @@ export const AgentsView: React.FC<AgentsViewProps> = ({
         {activeTab === 'inbound' ? (
           <>
             <section className="settings-card-alt animate-fade-in">
-              <h2 className="card-subtitle">Inbound: Opening Greeting</h2>
+              <div className="card-header-flex">
+                <h2 className="card-subtitle">Inbound: Opening Greeting</h2>
+                <button className="btn-text-action" onClick={() => setOpeningGreeting("")}>Reset to Default</button>
+              </div>
               <div className="input-field-group">
                 <label className="input-label-small">FIRST LINE (WHEN CUSTOMER CALLS YOU)</label>
                 <textarea 
@@ -65,7 +68,10 @@ export const AgentsView: React.FC<AgentsViewProps> = ({
             </section>
 
             <section className="settings-card-alt animate-fade-in">
-              <h2 className="card-subtitle">Inbound: System Prompt</h2>
+              <div className="card-header-flex">
+                <h2 className="card-subtitle">Inbound: System Prompt</h2>
+                <button className="btn-text-action" onClick={() => setAgentPrompt("")}>Reset to Default</button>
+              </div>
               <div className="input-field-group">
                 <label className="input-label-small">MASTER SYSTEM PROMPT (INBOUND RULES)</label>
                 <textarea 
@@ -79,7 +85,10 @@ export const AgentsView: React.FC<AgentsViewProps> = ({
         ) : (
           <>
             <section className="settings-card-alt animate-fade-in">
-              <h2 className="card-subtitle">Outbound: Opening Greeting</h2>
+              <div className="card-header-flex">
+                <h2 className="card-subtitle">Outbound: Opening Greeting</h2>
+                <button className="btn-text-action" onClick={() => setOutboundOpeningGreeting("")}>Reset to Default</button>
+              </div>
               <div className="input-field-group">
                 <label className="input-label-small">
                   FIRST LINE (WHEN YOU CALL CUSTOMER)
@@ -95,7 +104,10 @@ export const AgentsView: React.FC<AgentsViewProps> = ({
             </section>
 
             <section className="settings-card-alt animate-fade-in">
-              <h2 className="card-subtitle">Outbound: System Prompt</h2>
+              <div className="card-header-flex">
+                <h2 className="card-subtitle">Outbound: System Prompt</h2>
+                <button className="btn-text-action" onClick={() => setOutboundAgentPrompt("")}>Reset to Default</button>
+              </div>
               <div className="input-field-group">
                 <label className="input-label-small">
                   MASTER SYSTEM PROMPT (OUTBOUND RULES)

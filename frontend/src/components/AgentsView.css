@@ -155,3 +155,33 @@
     margin-top: 0.25rem;
     font-style: italic;
 }
+
+.card-header-flex {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.card-header-flex .card-subtitle {
+    margin-bottom: 0;
+}
+
+.btn-text-action {
+    background: transparent;
+    border: none;
+    color: #6366f1;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.5rem;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.btn-text-action:hover {
+    background: rgba(99, 102, 241, 0.1);
+    color: #818cf8;
+}
