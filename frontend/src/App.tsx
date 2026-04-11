@@ -81,16 +81,12 @@ function App() {
       .catch(err => console.error("Failed to fetch appointments:", err));
   };
 
-  useEffect(() => {
-    refreshData();
-    fetchAppointments(currentMonth);
-    // Poll every 10 seconds
-    const interval = setInterval(() => {
-      refreshData();
-      fetchAppointments(currentMonth);
-    }, 10000);
-    return () => clearInterval(interval);
-  }, []);
+useEffect(() => {
+  refreshData();
+  fetchAppointments(currentMonth);
+  // NOTE: Removed auto-polling to prevent overwriting user input
+  // Data refreshes only on initial load or manual refresh
+}, []);
 
   // Fetch appointments when month changes
   useEffect(() => {
@@ -109,11 +105,13 @@ function App() {
           outbound_opening_greeting: outboundOpeningGreeting
         }),
       });
-      if (response.ok) {
-        alert("Agent settings saved successfully!");
-      } else {
-        alert("Failed to save agent settings.");
-      }
+if (response.ok) {
+      alert("Agent settings saved successfully!");
+      // Refresh data to sync with server
+      refreshData();
+    } else {
+      alert("Failed to save agent settings.");
+    }
     } catch (err) {
       console.error("Error saving agent settings:", err);
       alert("Error saving agent settings.");
@@ -165,19 +163,20 @@ function App() {
 
         {(currentView === 'monitor') && <MonitorView liveCalls={liveCalls} />}
 
-        {(currentView === 'agents') && (
-          <AgentsView
-            agentPrompt={agentPrompt}
-            setAgentPrompt={setAgentPrompt}
-            openingGreeting={openingGreeting}
-            setOpeningGreeting={setOpeningGreeting}
-            outboundAgentPrompt={outboundAgentPrompt}
-            setOutboundAgentPrompt={setOutboundAgentPrompt}
-            outboundOpeningGreeting={outboundOpeningGreeting}
-            setOutboundOpeningGreeting={setOutboundOpeningGreeting}
-            onSave={saveAgentSettings}
-          />
-        )}
+{(currentView === 'agents') && (
+  <AgentsView
+    agentPrompt={agentPrompt}
+    setAgentPrompt={setAgentPrompt}
+    openingGreeting={openingGreeting}
+    setOpeningGreeting={setOpeningGreeting}
+    outboundAgentPrompt={outboundAgentPrompt}
+    setOutboundAgentPrompt={setOutboundAgentPrompt}
+    outboundOpeningGreeting={outboundOpeningGreeting}
+    setOutboundOpeningGreeting={setOutboundOpeningGreeting}
+    onSave={saveAgentSettings}
+    onRefresh={refreshData}
+  />
+)}
 
         {currentView === 'knowledge' && <KnowledgeBaseView />}
         

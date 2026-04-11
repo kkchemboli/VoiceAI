@@ -11,6 +11,7 @@ interface AgentsViewProps {
   outboundOpeningGreeting: string;
   setOutboundOpeningGreeting: (greeting: string) => void;
   onSave: () => void;
+  onRefresh: () => void;
 }
 
 export const AgentsView: React.FC<AgentsViewProps> = ({
@@ -22,16 +23,28 @@ export const AgentsView: React.FC<AgentsViewProps> = ({
   setOutboundAgentPrompt,
   outboundOpeningGreeting,
   setOutboundOpeningGreeting,
-  onSave
+  onSave,
+  onRefresh
 }) => {
   const [activeTab, setActiveTab] = useState<'inbound' | 'outbound'>('inbound');
 
   return (
     <div className="main-container">
-      <header className="view-header">
-        <h1 className="title">Agent Settings</h1>
-        <p className="subtitle">Configure AI personality and behavior for different call types</p>
-      </header>
+<header className="view-header">
+  <div className="header-content">
+    <h1 className="title">Agent Settings</h1>
+    <p className="subtitle">Configure AI personality and behavior for different call types</p>
+  </div>
+  <button className="btn-refresh" onClick={onRefresh} title="Refresh data from server">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+      <path d="M3 3v5h5"/>
+      <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+      <path d="M16 16h5v5"/>
+    </svg>
+    Refresh
+  </button>
+</header>
 
       <div className="tab-navigation">
         <button 
