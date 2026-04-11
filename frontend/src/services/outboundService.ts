@@ -5,7 +5,6 @@ export interface QueueItem {
   phone: string;
   status: 'pending' | 'calling' | 'success' | 'failed' | 'cancelled';
   timestamp: string;
-  duration?: string;
   error?: string;
 }
 
