@@ -1,12 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BookOpen, Save, Loader2 } from 'lucide-react';
 import './KnowledgeBaseView.css';
-
-interface KnowledgeStatus {
-  files: Array<{ name: string; type: string; format: string; size: number }>;
-  sheet_url: string;
-  total_files: number;
-}
 
 export const KnowledgeBaseView: React.FC = () => {
   const [enContent, setEnContent] = useState<string>('');
@@ -15,7 +9,6 @@ export const KnowledgeBaseView: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const API_BASE = import.meta.env.VITE_API_URL || '';
 
