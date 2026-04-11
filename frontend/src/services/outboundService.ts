@@ -127,7 +127,7 @@ export const outboundService = {
    */
   getMockQueue(): QueueItem[] {
     return [
-      { id: '1', phone: '+919988776655', status: 'success', timestamp: new Date(Date.now() - 3600000).toISOString(), duration: '2m 15s' },
+      { id: '1', phone: '+919988776655', status: 'success', timestamp: new Date(Date.now() - 3600000).toISOString() },
       { id: '2', phone: '+917766554433', status: 'failed', timestamp: new Date(Date.now() - 1800000).toISOString(), error: 'No Answer' },
       { id: '3', phone: '+918877665544', status: 'calling', timestamp: new Date(Date.now() - 60000).toISOString() },
       { id: '4', phone: '+916655443322', status: 'pending', timestamp: new Date().toISOString() },
