@@ -677,34 +677,38 @@ async def entrypoint(ctx: JobContext):
         print("DEBUG: CONNECTED TO ROOM SUCCESS")
 
         call_start_time = datetime.datetime.now()
-        
+
         # --- Safe RAG Initialization (Inside Entrypoint) ---
         openai_api_key = os.getenv("OPENAI_API_KEY")
         if openai_api_key and "rag" not in ctx.proc.userdata:
             try:
                 rag = RAGEngine(openai_api_key=openai_api_key)
-                
+
                 # Automatically find all local TXT and PDF knowledge files
                 base_dir = os.path.dirname(__file__)
                 kb_files = [
-                    os.path.join(base_dir, f) 
-                    for f in os.listdir(base_dir) 
+                    os.path.join(base_dir, f)
+                    for f in os.listdir(base_dir)
                     if f.endswith((".txt", ".pdf"))
                 ]
-                
+
                 if kb_files:
                     await rag.load_knowledge(kb_files)
                     logger.info(f"RAG: Indexed {len(kb_files)} local files (TXT/PDF).")
-                
+
                 # Check for Google Sheet URL (Safely)
                 if sheet_url := os.getenv("GOOGLE_SHEET_URL"):
                     try:
                         await rag.load_knowledge_from_sheet(sheet_url)
                     except Exception as e:
-                        logger.error(f"RAG: Failed to load Google Sheet ({e}), continuing without it.")
-                
+                        logger.error(
+                            f"RAG: Failed to load Google Sheet ({e}), continuing without it."
+                        )
+
                 ctx.proc.userdata["rag"] = rag
-                print("DEBUG: UNIVERSAL RAG ENGINE LOADED SUCCESSFULLY (PDF + TXT + SHEETS)")
+                print(
+                    "DEBUG: UNIVERSAL RAG ENGINE LOADED SUCCESSFULLY (PDF + TXT + SHEETS)"
+                )
             except Exception as e:
                 print(f"DEBUG: RAG ENGINE INIT FAILED: {e}")
     except Exception as e:
@@ -712,42 +716,48 @@ async def entrypoint(ctx: JobContext):
         return
 
     agent_config = await fetch_agent_config_from_supabase()
-    
+
     # --- Metadata & Persona Selection ---
     recipient_name = "Student"
     target_course = "our technical programs"
-    
+
     # Safely handle metadata (especially for Inbound calls where it might be empty)
     if ctx.job.metadata and ctx.job.metadata.strip():
         try:
             meta = json.loads(ctx.job.metadata)
             recipient_name = meta.get("recipientName", recipient_name)
             target_course = meta.get("targetCourse", target_course)
-            logger.info(f"Metadata detected: Calling {recipient_name} for {target_course}")
+            logger.info(
+                f"Metadata detected: Calling {recipient_name} for {target_course}"
+            )
         except Exception as e:
             logger.warning(f"Metadata provided but failed to parse: {e}")
             logger.debug(f"Raw metadata was: '{ctx.job.metadata}'")
 
     # Detect call direction (Inbound vs Outbound)
+    # Outbound calls are explicitly dispatched by vobiz_outbound.py with "outbound" in room name
+    # Inbound calls (SIP users calling the system) have room names like "+91865..." or contain "sip"
     room_name = ctx.room.name.lower()
-    is_outbound = "outbound" in room_name or room_name.startswith("+") or "sip" in room_name
-    
+    is_outbound = "outbound" in room_name
+
     if is_outbound:
         logger.info("OUTBOUND call detected. Using refined outbound persona.")
-        
+
         # 1. System Prompt Fallback Logic
         db_outbound_prompt = agent_config.get("outbound_system_prompt")
         if db_outbound_prompt and db_outbound_prompt.strip():
             logger.info("Using custom OUTBOUND system prompt from Supabase.")
             system_prompt = db_outbound_prompt
         else:
-            logger.info("No custom outbound prompt found (or empty). Falling back to hardcoded OUTBOUND_SYSTEM_PROMPT.")
+            logger.info(
+                "No custom outbound prompt found (or empty). Falling back to hardcoded OUTBOUND_SYSTEM_PROMPT."
+            )
             system_prompt = OUTBOUND_SYSTEM_PROMPT
-            
+
         # Inject dynamic details into prompt
         system_prompt = system_prompt.replace("[Name]", recipient_name)
         system_prompt += f"\n\nCURRENT CONTEXT:\nYou are calling {recipient_name} specifically about the {target_course} course they inquired about."
-        
+
         # 2. Greeting Fallback Logic
         db_outbound_greeting = agent_config.get("outbound_opening_greeting")
         if db_outbound_greeting and db_outbound_greeting.strip():
@@ -756,15 +766,15 @@ async def entrypoint(ctx: JobContext):
         else:
             logger.info("No custom outbound greeting found. Falling back to default.")
             greeting_text = f"Hi, am I speaking with {recipient_name}?"
-            
+
         print(f"DEBUG: OUTBOUND GREETING SELECTED: '{greeting_text}'")
     else:
         logger.info("INBOUND call detected. Using standard configuration.")
-        
+
         system_prompt = agent_config.get("system_prompt", DEFAULT_SYSTEM_PROMPT)
         greeting_text = agent_config.get("opening_greeting", DEFAULT_GREETING)
         print(f"DEBUG: INBOUND GREETING SELECTED: '{greeting_text}'")
-        
+
     knowledge_texts = agent_config["knowledge_texts"]
 
     rag_engine: Optional[RAGEngine] = ctx.proc.userdata.get("rag")
@@ -790,9 +800,12 @@ async def entrypoint(ctx: JobContext):
     tz_info = None
     try:
         from zoneinfo import ZoneInfo
+
         tz_info = ZoneInfo(timezone)
     except Exception as e:
-        logger.warning(f"ZoneInfo database missing or error ({e}). Using hardcoded Indian Offset (+5:30).")
+        logger.warning(
+            f"ZoneInfo database missing or error ({e}). Using hardcoded Indian Offset (+5:30)."
+        )
         tz_info = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 
     cal_event_id = os.getenv("CAL_EVENT_ID")
@@ -803,8 +816,12 @@ async def entrypoint(ctx: JobContext):
             cal_event_id = None
 
     if cal_api_key := os.getenv("CAL_API_KEY", None):
-        logger.info(f"CAL_API_KEY detected, using cal.com calendar (event_id: {cal_event_id})")
-        cal = CalComCalendar(api_key=cal_api_key, timezone=timezone, event_id=cal_event_id)
+        logger.info(
+            f"CAL_API_KEY detected, using cal.com calendar (event_id: {cal_event_id})"
+        )
+        cal = CalComCalendar(
+            api_key=cal_api_key, timezone=timezone, event_id=cal_event_id
+        )
     else:
         logger.warning("CAL_API_KEY is not set. Falling back to FakeCalendar")
         cal = FakeCalendar(timezone=timezone)
@@ -1006,7 +1023,7 @@ async def entrypoint(ctx: JobContext):
             # SIP calls need a moment for the audio bridge to clear after answering
             print("DEBUG: OUTBOUND - Waiting 2.0s for audio bridge to stabilize...")
             await asyncio.sleep(2.0)
-            
+
         session.say(greeting_text, allow_interruptions=True)
         print(f"DEBUG: GREETING SENT: '{greeting_text}'")
     except (RuntimeError, Exception) as e:
@@ -1055,7 +1072,9 @@ async def entrypoint(ctx: JobContext):
                         "customer_name": customer_name,
                         "summary": admin_summary_text,
                         "duration": call_duration,
-                        "status": "booked" if booking_info.get("booked") else "completed",
+                        "status": "booked"
+                        if booking_info.get("booked")
+                        else "completed",
                         "metadata": {"room_name": ctx.room.name},
                     }
                 ).execute()
