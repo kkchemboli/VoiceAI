@@ -344,8 +344,8 @@ async def fetch_agent_config_from_supabase():
         config = {
             "system_prompt": DEFAULT_SYSTEM_PROMPT,
             "opening_greeting": DEFAULT_GREETING,
-            "outbound_system_prompt": DEFAULT_SYSTEM_PROMPT,
-            "outbound_opening_greeting": "Hi, I am calling from Expert Institute. How can I help you?",
+            "outbound_system_prompt": "",  # Empty by default to trigger fallback
+            "outbound_opening_greeting": "",
             "knowledge_texts": [],
         }
 
@@ -734,14 +734,33 @@ async def entrypoint(ctx: JobContext):
     
     if is_outbound:
         logger.info("OUTBOUND call detected. Using refined outbound persona.")
+        
+        # 1. System Prompt Fallback Logic
+        db_outbound_prompt = agent_config.get("outbound_system_prompt")
+        if db_outbound_prompt and db_outbound_prompt.strip():
+            logger.info("Using custom OUTBOUND system prompt from Supabase.")
+            system_prompt = db_outbound_prompt
+        else:
+            logger.info("No custom outbound prompt found (or empty). Falling back to hardcoded OUTBOUND_SYSTEM_PROMPT.")
+            system_prompt = OUTBOUND_SYSTEM_PROMPT
+            
         # Inject dynamic details into prompt
-        system_prompt = OUTBOUND_SYSTEM_PROMPT.replace("[Name]", recipient_name)
+        system_prompt = system_prompt.replace("[Name]", recipient_name)
         system_prompt += f"\n\nCURRENT CONTEXT:\nYou are calling {recipient_name} specifically about the {target_course} course they inquired about."
         
-        greeting_text = f"Hi, am I speaking with {recipient_name}?"
+        # 2. Greeting Fallback Logic
+        db_outbound_greeting = agent_config.get("outbound_opening_greeting")
+        if db_outbound_greeting and db_outbound_greeting.strip():
+            logger.info("Using custom OUTBOUND greeting from Supabase.")
+            greeting_text = db_outbound_greeting.replace("[Name]", recipient_name)
+        else:
+            logger.info("No custom outbound greeting found. Falling back to default.")
+            greeting_text = f"Hi, am I speaking with {recipient_name}?"
+            
         print(f"DEBUG: OUTBOUND GREETING SELECTED: '{greeting_text}'")
     else:
         logger.info("INBOUND call detected. Using standard configuration.")
+        
         system_prompt = agent_config.get("system_prompt", DEFAULT_SYSTEM_PROMPT)
         greeting_text = agent_config.get("opening_greeting", DEFAULT_GREETING)
         print(f"DEBUG: INBOUND GREETING SELECTED: '{greeting_text}'")

@@ -409,8 +409,8 @@ async def get_config():
     config = {
         "system_prompt": DEFAULT_PROMPT,
         "opening_greeting": DEFAULT_GREETING,
-        "outbound_system_prompt": DEFAULT_PROMPT,
-        "outbound_opening_greeting": "Hi, I am calling from Expert Institute. How can I help you?",
+        "outbound_system_prompt": "",
+        "outbound_opening_greeting": "",
     }
     
     if not supabase:

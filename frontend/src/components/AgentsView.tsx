@@ -81,12 +81,15 @@ export const AgentsView: React.FC<AgentsViewProps> = ({
             <section className="settings-card-alt animate-fade-in">
               <h2 className="card-subtitle">Outbound: Opening Greeting</h2>
               <div className="input-field-group">
-                <label className="input-label-small">FIRST LINE (WHEN YOU CALL CUSTOMER)</label>
+                <label className="input-label-small">
+                  FIRST LINE (WHEN YOU CALL CUSTOMER)
+                  {!outboundOpeningGreeting && <span className="default-indicator"> — Using Default</span>}
+                </label>
                 <textarea 
                   className="input-field-dark height-sm" 
                   value={outboundOpeningGreeting}
                   onChange={(e) => setOutboundOpeningGreeting(e.target.value)}
-                  placeholder="Hello, I am calling from Expert Institute..."
+                  placeholder="Leaving this empty will use the default greeting: 'Hi, am I speaking with [Name]?'"
                 />
               </div>
             </section>
@@ -94,12 +97,19 @@ export const AgentsView: React.FC<AgentsViewProps> = ({
             <section className="settings-card-alt animate-fade-in">
               <h2 className="card-subtitle">Outbound: System Prompt</h2>
               <div className="input-field-group">
-                <label className="input-label-small">MASTER SYSTEM PROMPT (OUTBOUND RULES)</label>
+                <label className="input-label-small">
+                  MASTER SYSTEM PROMPT (OUTBOUND RULES)
+                  {!outboundAgentPrompt && <span className="default-indicator"> — Using Default</span>}
+                </label>
                 <textarea 
                   className="input-field-dark height-lg" 
                   value={outboundAgentPrompt}
                   onChange={(e) => setOutboundAgentPrompt(e.target.value)}
+                  placeholder="Type a custom outbound persona here. Leave empty to use the 'Neha' default script."
                 />
+                <p className="input-help-text">
+                  Note: If empty, the system uses the multi-phase technical training inquiry script by default.
+                </p>
               </div>
             </section>
           </>
