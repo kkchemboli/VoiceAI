@@ -112,8 +112,18 @@ IMPORTANT: TELL THE CALLERS THE PRICE & DISCOUNTED PRICE AS WELL.
 IMPORTANT: NEVER ACT LIKE THE SUPPORT TEAM ALWAYS TRANSFER WHEN THE SUPPORT TEAM IS NEEDED(FOR ANYTHING NOT IN KNOWLEDGE BASE).
 """
 
+cal_api_key = os.getenv("CAL_API_KEY")
+cal_event_id = os.getenv("CAL_EVENT_ID")
+if cal_event_id:
+    try:
+        cal_event_id = int(cal_event_id)
+    except ValueError:
+        cal_event_id = None
+
 if cal_api_key:
-    calendar_service = CalComCalendar(api_key=cal_api_key, timezone=timezone)
+    calendar_service = CalComCalendar(
+        api_key=cal_api_key, timezone=timezone, event_id=cal_event_id
+    )
 else:
     calendar_service = FakeCalendar(timezone=timezone)
 

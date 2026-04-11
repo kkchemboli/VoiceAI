@@ -678,9 +678,16 @@ async def entrypoint(ctx: JobContext):
     # Calendar Initialization
     timezone = "Asia/Kolkata"
     tz_info = ZoneInfo(timezone)
+    cal_event_id = os.getenv("CAL_EVENT_ID")
+    if cal_event_id:
+        try:
+            cal_event_id = int(cal_event_id)
+        except ValueError:
+            cal_event_id = None
+
     if cal_api_key := os.getenv("CAL_API_KEY", None):
-        logger.info("CAL_API_KEY detected, using cal.com calendar")
-        cal = CalComCalendar(api_key=cal_api_key, timezone=timezone)
+        logger.info(f"CAL_API_KEY detected, using cal.com calendar (event_id: {cal_event_id})")
+        cal = CalComCalendar(api_key=cal_api_key, timezone=timezone, event_id=cal_event_id)
     else:
         logger.warning("CAL_API_KEY is not set. Falling back to FakeCalendar")
         cal = FakeCalendar(timezone=timezone)

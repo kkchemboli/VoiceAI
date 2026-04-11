@@ -146,9 +146,10 @@ BASE_URL = "https://api.cal.com/v2/"
 
 
 class CalComCalendar(Calendar):
-    def __init__(self, *, api_key: str, timezone: str) -> None:
+    def __init__(self, *, api_key: str, timezone: str, event_id: int | None = None) -> None:
         self.tz = ZoneInfo(timezone)
         self._api_key = api_key
+        self._lk_event_id = event_id
 
         self._http_session = None
 
@@ -178,11 +179,11 @@ class CalComCalendar(Calendar):
             url=f"{BASE_URL}event-types/?{query}",
         ) as resp:
             resp.raise_for_status()
+            if self._lk_event_id:
+                self._logger.info(f"Using pre-configured event type id: {self._lk_event_id}")
+                return
+
             data = (await resp.json())["data"]
-            lk_event_type = next(
-                (event for event in data if event.get("slug") == CAL_COM_EVENT_TYPE),
-                None,
-            )
 
             if lk_event_type:
                 self._lk_event_id = lk_event_type["id"]
