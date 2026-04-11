@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BookOpen, Save, Globe, Loader2, FileText, Database, Layers, Upload, Trash2 } from 'lucide-react';
+import { BookOpen, Save, Loader2 } from 'lucide-react';
 import './KnowledgeBaseView.css';
 
 interface KnowledgeStatus {
@@ -14,8 +14,6 @@ export const KnowledgeBaseView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'en' | 'hi'>('en');
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
-  const [status, setStatus] = useState<KnowledgeStatus | null>(null);
-  const [isUploading, setIsUploading] = useState<boolean>(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -45,7 +43,6 @@ export const KnowledgeBaseView: React.FC = () => {
       
       setEnContent(enData.content || '');
       setHiContent(hiData.content || '');
-      setStatus(statusData);
       
       if (!enData.content && !hiData.content && !statusData) {
         setMessage({ type: 'error', text: 'Some parts of the knowledge base could not be loaded.' });
@@ -88,58 +85,7 @@ export const KnowledgeBaseView: React.FC = () => {
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
 
-    if (!file.name.endsWith('.pdf') && !file.name.endsWith('.txt')) {
-      setMessage({ type: 'error', text: 'Only PDF and TXT files are allowed.' });
-      return;
-    }
-
-    setIsUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const response = await fetch(`${API_BASE}/api/knowledge/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (response.ok) {
-        setMessage({ type: 'success', text: `Uploaded ${file.name} successfully!` });
-        fetchKnowledge(); // Refresh status list
-      } else {
-        const err = await response.json();
-        setMessage({ type: 'error', text: err.detail || 'Upload failed.' });
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Network error during upload.' });
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  const handleDeleteFile = async (filename: string) => {
-    if (!window.confirm(`Are you sure you want to delete ${filename}? Neha will lose access to this info.`)) return;
-
-    try {
-      const response = await fetch(`${API_BASE}/api/knowledge/file/${filename}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        setMessage({ type: 'success', text: `Deleted ${filename}.` });
-        fetchKnowledge(); // Refresh
-      } else {
-        alert('Failed to delete file.');
-      }
-    } catch (err) {
-      alert('Error connecting to backend.');
-    }
-  };
 
   return (
     <div className="main-container">

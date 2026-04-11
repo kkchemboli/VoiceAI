@@ -766,15 +766,22 @@ async def entrypoint(ctx: JobContext):
     initial_ctx = llm.ChatContext()
     initial_ctx.add_message(role="system", content=system_prompt)
 
-    # Calendar Initialization - Robust version for Windows
+    # Calendar Initialization
     timezone = "Asia/Kolkata"
+    tz_info = None
     try:
         from zoneinfo import ZoneInfo
         tz_info = ZoneInfo(timezone)
     except Exception as e:
         logger.warning(f"ZoneInfo database missing or error ({e}). Using hardcoded Indian Offset (+5:30).")
-        # Hardcoded Asia/Kolkata offset (UTC + 5.5 hours)
         tz_info = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+
+    cal_event_id = os.getenv("CAL_EVENT_ID")
+    if cal_event_id:
+        try:
+            cal_event_id = int(cal_event_id)
+        except ValueError:
+            cal_event_id = None
 
     if cal_api_key := os.getenv("CAL_API_KEY", None):
         logger.info(f"CAL_API_KEY detected, using cal.com calendar (event_id: {cal_event_id})")

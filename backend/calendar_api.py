@@ -151,7 +151,7 @@ BASE_URL = "https://api.cal.com/v2/"
 
 
 class CalComCalendar(Calendar):
-    def __init__(self, *, api_key: str, timezone: str) -> None:
+    def __init__(self, *, api_key: str, timezone: str, event_id: int | None = None) -> None:
         try:
             from zoneinfo import ZoneInfo
             self.tz = ZoneInfo(timezone)
