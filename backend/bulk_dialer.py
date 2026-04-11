@@ -3,15 +3,34 @@ import csv
 import io
 import os
 import logging
+import datetime
 from dotenv import load_dotenv
 import aiohttp
 from vobiz_outbound import make_outbound_call
+from supabase import create_client, Client
+from typing import Optional
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("bulk-dialer")
 
 load_dotenv()
+
+# Supabase Setup (shared with main.py)
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+supabase: Optional[Client] = None
+if SUPABASE_URL and SUPABASE_KEY:
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        logger.info("Connected to Supabase from bulk_dialer")
+    except Exception as e:
+        logger.error(f"Failed to connect to Supabase from bulk_dialer: {e}")
+
+# In-memory fallback queue (shared with main.py - populated even when Supabase unavailable)
+outbound_queue = []
+
 
 async def fetch_sheet_data(url):
     """
@@ -24,7 +43,8 @@ async def fetch_sheet_data(url):
         url = url.split("/edit")[0] + "/export?format=csv"
     elif "docs.google.com/spreadsheets" in url and not "export?" in url:
         # Handle links without /edit but needing /export
-        if not url.endswith("/"): url += "/"
+        if not url.endswith("/"):
+            url += "/"
         url += "export?format=csv"
 
     async with aiohttp.ClientSession() as session:
@@ -33,12 +53,15 @@ async def fetch_sheet_data(url):
                 text = await resp.text()
                 # Basic check if we got HTML instead of CSV
                 if "<!DOCTYPE html>" in text or "<html" in text.lower():
-                    logger.error("Fetched content is HTML, not CSV. Please ensure the sheet is 'Published to the web' or use a public sharing link.")
+                    logger.error(
+                        "Fetched content is HTML, not CSV. Please ensure the sheet is 'Published to the web' or use a public sharing link."
+                    )
                     return None
                 return text
             else:
                 logger.error(f"Failed to fetch sheet: Status {resp.status}")
                 return None
+
 
 async def run_bulk_dialer():
     sheet_url = os.getenv("GOOGLE_SHEET_URL")
@@ -55,24 +78,40 @@ async def run_bulk_dialer():
 
     f = io.StringIO(csv_data)
     reader = csv.DictReader(f)
-    
+
     # Identify column names (Case-insensitive search)
     headers = reader.fieldnames
     name_col = next((h for h in headers if "name" in h.lower()), None)
-    phone_col = next((h for h in headers if "phone" in h.lower() or "number" in h.lower() or "contact" in h.lower()), None)
-    course_col = next((h for h in headers if "course" in h.lower() or "interest" in h.lower()), None)
+    phone_col = next(
+        (
+            h
+            for h in headers
+            if "phone" in h.lower() or "number" in h.lower() or "contact" in h.lower()
+        ),
+        None,
+    )
+    course_col = next(
+        (h for h in headers if "course" in h.lower() or "interest" in h.lower()), None
+    )
 
     if not phone_col:
         logger.error(f"Could not find a 'Phone' column in headers: {headers}")
         return
 
-    logger.info(f"Found columns: Name='{name_col}', Phone='{phone_col}', Course='{course_col}'")
+    logger.info(
+        f"Found columns: Name='{name_col}', Phone='{phone_col}', Course='{course_col}'"
+    )
 
     count = 0
+    failed_count = 0
     for row in reader:
         name = row.get(name_col, "Student") if name_col else "Student"
         phone = row.get(phone_col)
-        course = row.get(course_col, "our training programs") if course_col else "our training programs"
+        course = (
+            row.get(course_col, "our training programs")
+            if course_col
+            else "our training programs"
+        )
 
         if not phone or not phone.strip():
             continue
@@ -81,19 +120,86 @@ async def run_bulk_dialer():
         print(f"\n[BULK] {prompt}")
         logger.info(prompt)
 
+        call_record_id = None
+        status = "failed"
+        error_msg = None
+
         try:
-            # Trigger the call (Reuse vobiz_outbound logic)
+            # Step 1: Create queue entry in Supabase (or in-memory fallback)
+            if supabase:
+                try:
+                    response = (
+                        supabase.table("outbound_calls")
+                        .insert(
+                            {
+                                "phone_number": phone,
+                                "status": "calling",
+                            }
+                        )
+                        .execute()
+                    )
+                    if response.data:
+                        call_record_id = response.data[0]["id"]
+                        logger.info(
+                            f"Created queue entry for {name} (ID: {call_record_id})"
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to create Supabase record for {name}: {e}")
+            else:
+                # Fallback to in-memory queue
+                call_id = len(outbound_queue) + 1
+                call_record_id = str(call_id)  # Use ID as string for in-memory
+                outbound_queue.append(
+                    {
+                        "id": call_record_id,
+                        "phone": phone,
+                        "status": "calling",
+                        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                    }
+                )
+                logger.info(f"Added {name} to in-memory queue (ID: {call_record_id})")
+
+            # Step 2: Trigger the call (Reuse vobiz_outbound logic)
             # wait_for_completion=True ensures we don't call the next student until this one is done
             await make_outbound_call(phone, name, course, wait_for_completion=True)
+            status = "success"
             count += 1
-            
-            # Small 2 second gap for system cleanup before the next dial
-            await asyncio.sleep(2)
-            
+            logger.info(f"Call completed successfully for {name}")
+
         except Exception as e:
+            error_msg = str(e)
+            failed_count += 1
             logger.error(f"Failed to dispatch call for {name}: {e}")
 
+        finally:
+            # Step 3: Update queue entry with final status
+            if supabase and call_record_id:
+                try:
+                    supabase.table("outbound_calls").update(
+                        {"status": status, "error_message": error_msg}
+                    ).eq("id", call_record_id).execute()
+                    logger.info(f"Updated queue entry for {name} to status: {status}")
+                except Exception as e:
+                    logger.error(f"Failed to update Supabase record for {name}: {e}")
+            elif not supabase and call_record_id:
+                # Update in-memory queue entry
+                for item in outbound_queue:
+                    if item["id"] == call_record_id:
+                        item["status"] = status
+                        if error_msg:
+                            item["error"] = error_msg
+                        break
+                logger.info(
+                    f"Updated in-memory queue entry for {name} to status: {status}"
+                )
+
+            # Small 2 second gap for system cleanup before the next dial
+            await asyncio.sleep(2)
+
     print(f"\n✅ COMPLETED: Successfully dispatched {count} calls from the sheet.")
+    if failed_count > 0:
+        print(f"⚠️  {failed_count} calls failed. Check logs for details.")
+
 
 if __name__ == "__main__":
     asyncio.run(run_bulk_dialer())
