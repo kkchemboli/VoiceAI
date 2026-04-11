@@ -140,7 +140,7 @@ class FakeCalendar(Calendar):
         ]
 
 
-CAL_COM_EVENT_TYPE = "livekit-front-desk"
+CAL_COM_EVENT_TYPE = "LiveKit Front-Desk"
 EVENT_DURATION_MIN = 30
 BASE_URL = "https://api.cal.com/v2/"
 
