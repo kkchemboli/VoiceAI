@@ -383,8 +383,8 @@ async def fetch_agent_config_from_supabase():
 
 class ExpertInstituteAgent(Agent):
     LANGUAGE_CONFIG = {
-        "hi": {"lang": "hi-IN", "speaker": "roopa", "pace": 1.05},
-        "en": {"lang": "en-IN", "speaker": "roopa", "pace": 1.05},
+        "hi": {"lang": "hi-IN", "speaker": "shubh", "pace": 1.05},
+        "en": {"lang": "en-IN", "speaker": "shubh", "pace": 1.05},
     }
 
     def __init__(self, fnc_ctx=None, rag_engine=None, **kwargs):
@@ -901,7 +901,7 @@ async def entrypoint(ctx: JobContext):
     tts_node = sarvam.TTS(
         target_language_code="en-IN",  # Initialized for English greeting
         model="bulbul:v3",
-        speaker="roopa",
+        speaker="shubh",
         pace=1.05,
         speech_sample_rate=22050,
         temperature=0.6,
