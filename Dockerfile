@@ -14,7 +14,10 @@ FROM python:3.12-slim
 RUN apt-get update && apt-get install -y \
     supervisor \
     libgomp1 \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
+
+ENV TZ=Asia/Kolkata
 
 WORKDIR /app
 
