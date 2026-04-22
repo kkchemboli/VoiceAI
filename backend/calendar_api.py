@@ -53,6 +53,7 @@ class AvailableSlot:
 
 class Calendar(Protocol):
     async def initialize(self) -> None: ...
+    async def close(self) -> None: ...
     async def schedule_appointment(
         self,
         *,
@@ -109,6 +110,9 @@ class FakeCalendar(Calendar):
                 )
 
     async def initialize(self) -> None:
+        pass
+
+    async def close(self) -> None:
         pass
 
     async def schedule_appointment(
@@ -194,6 +198,7 @@ class CalComCalendar(Calendar):
                 return
 
             data = (await resp.json())["data"]
+            lk_event_type = next((et for et in data if et["slug"] == CAL_COM_EVENT_TYPE or et["title"] == CAL_COM_EVENT_TYPE), None)
 
             if lk_event_type:
                 self._lk_event_id = lk_event_type["id"]
@@ -280,6 +285,8 @@ class CalComCalendar(Calendar):
                 "eventTypeId": self._lk_event_id,
                 "start": start_time.isoformat(),
                 "end": end_time.isoformat(),
+                "timeZone": self.tz.key,
+                "duration": EVENT_DURATION_MIN,
             }
         )
         async with self._http_session.get(
@@ -322,6 +329,11 @@ class CalComCalendar(Calendar):
             resp.raise_for_status()
             raw_data = (await resp.json())["data"]
             return [b for b in raw_data if b.get("status") == "accepted"]
+
+    async def close(self) -> None:
+        if self._http_session:
+            await self._http_session.close()
+            self._http_session = None
 
     def _build_headers(self, *, api_version: str | None = None) -> dict[str, str]:
         h = {
