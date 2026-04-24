@@ -168,15 +168,15 @@ TONE: Realistic, human-like, engaging, and professional.
    "Hi, am I speaking with [Name]?" 
    (Wait for confirmation)
 2. PROCEED AFTER CONFIRMATION:
-   "Hi! I'm Neha calling from Expert Institute, New Delhi. I'm calling because you recently showed interest in our technical training programs. Is this a good time to speak?"
+   "Hi! I'm Neha calling from Expert Institute, New Delhi. I'm calling because you recently showed interest in [Course]. Is this a good time to speak?"
 3. If they are busy: "No problem! When would be a better time to call you back?"
 4. If they are free: Proceed to list the courses.
 
-### PHASE 2: COURSE LISTING & INTEREST CHECK
-1. INTRODUCE COURSES:
-   "Great! As you might know, we offer specialized courses in Mobile Repairing, iPhone, Laptop, MacBook, CCTV, LED TV, and AC PCB repairing."
-2. CHECK INTEREST:
-   "Was there a specific course you were thinking about starting?"
+### PHASE 2: COURSE CONFIRMATION & DETAILS
+1. ACKNOWLEDGE INTEREST:
+   "Great! Since you are interested in [Course], I can tell you all about it. We also offer specialized courses in Mobile Repairing, iPhone, Laptop, MacBook, CCTV, LED TV, and AC PCB repairing if you are curious about those too."
+2. CONFIRM COURSE:
+   "Is [Course] the main thing you are looking for?"
 3. Refer to [KNOWLEDGE CONTEXT] for any specific course details or benefits.
 
 ### PHASE 3: THE HOOK (FREE DEMO CLASS)
@@ -727,6 +727,18 @@ async def entrypoint(ctx: JobContext):
             meta = json.loads(ctx.job.metadata)
             recipient_name = meta.get("recipientName", recipient_name)
             target_course = meta.get("targetCourse", target_course)
+            
+            # Normalize and handle fallback for generic/missing courses
+            generic_vals = ["our technical programs", "our training programs", "technical programs", "training programs", "none", "unknown"]
+            if not target_course or target_course.lower().strip() in generic_vals:
+                target_course = "our technical training programs"
+            else:
+                # Add "course" suffix for specific courses if it doesn't already have it
+                if "course" not in target_course.lower() and "program" not in target_course.lower():
+                    target_course = f"our {target_course} course"
+                else:
+                    target_course = f"our {target_course}"
+            
             logger.info(
                 f"Metadata detected: Calling {recipient_name} for {target_course}"
             )
@@ -756,13 +768,13 @@ async def entrypoint(ctx: JobContext):
 
         # Inject dynamic details into prompt
         system_prompt = system_prompt.replace("[Name]", recipient_name)
+        system_prompt = system_prompt.replace("[Course]", target_course)
         system_prompt += f"\n\nCURRENT CONTEXT:\nYou are calling {recipient_name} specifically about the {target_course} course they inquired about."
 
         # 2. Greeting Fallback Logic
-        db_outbound_greeting = agent_config.get("outbound_opening_greeting")
         if db_outbound_greeting and db_outbound_greeting.strip():
             logger.info("Using custom OUTBOUND greeting from Supabase.")
-            greeting_text = db_outbound_greeting.replace("[Name]", recipient_name)
+            greeting_text = db_outbound_greeting.replace("[Name]", recipient_name).replace("[Course]", target_course)
         else:
             logger.info("No custom outbound greeting found. Falling back to default.")
             greeting_text = f"Hi, am I speaking with {recipient_name}?"
