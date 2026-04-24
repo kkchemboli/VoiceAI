@@ -772,6 +772,7 @@ async def entrypoint(ctx: JobContext):
         system_prompt += f"\n\nCURRENT CONTEXT:\nYou are calling {recipient_name} specifically about the {target_course} course they inquired about."
 
         # 2. Greeting Fallback Logic
+        db_outbound_greeting = agent_config.get("outbound_opening_greeting")
         if db_outbound_greeting and db_outbound_greeting.strip():
             logger.info("Using custom OUTBOUND greeting from Supabase.")
             greeting_text = db_outbound_greeting.replace("[Name]", recipient_name).replace("[Course]", target_course)
