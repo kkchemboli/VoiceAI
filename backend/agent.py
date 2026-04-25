@@ -746,6 +746,9 @@ async def entrypoint(ctx: JobContext):
             logger.warning(f"Metadata provided but failed to parse: {e}")
             logger.debug(f"Raw metadata was: '{ctx.job.metadata}'")
 
+    # Detect if we have a generic name (to avoid saying "Hi Student")
+    is_generic_name = recipient_name.lower().strip() in ["student", "unknown", "none", "prospect", ""]
+
     # Detect call direction (Inbound vs Outbound)
     # Outbound calls are explicitly dispatched by vobiz_outbound.py with "outbound" in room name
     # Inbound calls (SIP users calling the system) have room names like "+91865..." or contain "sip"
@@ -769,6 +772,10 @@ async def entrypoint(ctx: JobContext):
         # Inject dynamic details into prompt
         system_prompt = system_prompt.replace("[Name]", recipient_name)
         system_prompt = system_prompt.replace("[Course]", target_course)
+        
+        if is_generic_name:
+            system_prompt += "\n\nCRITICAL: You have already introduced yourself and mentioned the course interest in the initial greeting. DO NOT repeat your introduction. Respond naturally to the user's answer and proceed to course details (Phase 2)."
+        
         system_prompt += f"\n\nCURRENT CONTEXT:\nYou are calling {recipient_name} specifically about the {target_course} course they inquired about."
 
         # 2. Greeting Fallback Logic
@@ -777,8 +784,11 @@ async def entrypoint(ctx: JobContext):
             logger.info("Using custom OUTBOUND greeting from Supabase.")
             greeting_text = db_outbound_greeting.replace("[Name]", recipient_name).replace("[Course]", target_course)
         else:
-            logger.info("No custom outbound greeting found. Falling back to default.")
-            greeting_text = f"Hi, am I speaking with {recipient_name}?"
+            logger.info("No custom outbound greeting found. Using Smart Greeting logic.")
+            if is_generic_name:
+                greeting_text = f"Hello! I'm Neha calling from Expert Institute, New Delhi. I'm calling because we received an inquiry regarding {target_course}. Is this a good time to speak?"
+            else:
+                greeting_text = f"Hi, am I speaking with {recipient_name}?"
 
         print(f"DEBUG: OUTBOUND GREETING SELECTED: '{greeting_text}'")
     else:
