@@ -1121,7 +1121,7 @@ To secure your seat, book here:
 💳 https://pages.razorpay.com/pl_GIkisCwDv60T3i/view
 
 🎯 Special Offer:
-If you book now with just ₹500, this amount will be adjusted in your course fees — so you can claim the offer without any risk.
+If you book now with just ₹1000, this amount will be adjusted in your course fees — so you can claim the offer without any risk.
 
 Reply here if you need any help or want to book a FREE demo class.
 📞 9718888700"""
