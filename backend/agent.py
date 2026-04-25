@@ -731,7 +731,7 @@ async def entrypoint(ctx: JobContext):
             # Normalize and handle fallback for generic/missing courses
             generic_vals = ["our technical programs", "our training programs", "technical programs", "training programs", "none", "unknown"]
             if not target_course or target_course.lower().strip() in generic_vals:
-                target_course = "our technical training programs"
+                target_course = "our mobile repairing course"
             else:
                 # Add "course" suffix for specific courses if it doesn't already have it
                 if "course" not in target_course.lower() and "program" not in target_course.lower():
