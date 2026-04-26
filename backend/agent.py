@@ -141,6 +141,13 @@ ZIPER_API_TOKEN = os.getenv("ZIPER_API_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
+# WABridge Credentials
+WABRIDGE_AUTH_KEY = os.getenv("WABRIDGE_AUTH_KEY")
+WABRIDGE_APP_KEY = os.getenv("WABRIDGE_APP_KEY")
+WABRIDGE_DEVICE_ID = os.getenv("WABRIDGE_DEVICE_ID")
+WABRIDGE_MEDIA_URL = os.getenv("WABRIDGE_MEDIA_URL")
+WABRIDGE_TEMPLATE_ID = os.getenv("WABRIDGE_TEMPLATE_ID")
+
 DEFAULT_GREETING = (
     "Hello! Thank you for calling Expert Institute. How can I help you today?"
 )
@@ -651,6 +658,55 @@ async def send_ziper_whatsapp(phone_number, message_text):
         logger.error(f"Error calling Ziper.io: {e}")
 
 
+async def send_wabridge_whatsapp(phone_number, template_id=None, media_url=None):
+    """
+    WABridge WhatsApp API integration to send template messages with media.
+    """
+    if not phone_number:
+        return
+
+    # Formatting: 91 prefix, no +
+    clean_phone = phone_number.replace("+", "")
+    if not clean_phone.startswith("91"):
+        clean_phone = "91" + clean_phone
+
+    logger.info(f"Preparing to send WABridge template message to {clean_phone}...")
+
+    auth_key = WABRIDGE_AUTH_KEY
+    app_key = WABRIDGE_APP_KEY
+    device_id = WABRIDGE_DEVICE_ID
+    
+    # Use provided template/media or fallback to environment variables
+    template_id = template_id or WABRIDGE_TEMPLATE_ID
+    media_url = media_url or WABRIDGE_MEDIA_URL
+
+    if not all([auth_key, app_key, device_id, template_id]):
+        logger.error("WABridge credentials or Template ID missing! Please check your .env file.")
+        return
+
+    try:
+        url = "https://web.wabridge.com/api/createmessage"
+        payload = {
+            "authkey": auth_key,
+            "appkey": app_key,
+            "device_id": device_id,
+            "phone": clean_phone,
+            "template_id": template_id,
+            "media_url": media_url,
+            "message": "" # Template handles the content
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload) as response:
+                if response.status in [200, 201]:
+                    logger.info(f"Successfully sent WABridge WhatsApp template to {clean_phone}")
+                else:
+                    resp_text = await response.text()
+                    logger.error(f"WABridge API failed (Status {response.status}): {resp_text}")
+    except Exception as e:
+        logger.error(f"Error calling WABridge: {e}")
+
+
 def prewarm(proc: JobProcess):
     print("DEBUG: PREWARM STARTED")
     try:
@@ -1110,8 +1166,9 @@ async def entrypoint(ctx: JobContext):
         # 3. Ziper.io: Send Summary to Admin
         await send_ziper_whatsapp(admin_phone, admin_summary_text)
 
-        # 3. Ziper.io: Send welcome message to Prospect
+        # 3. WhatsApp Follow-ups (Ziper + WABridge)
         if user_phone:
+            # Send Ziper Text Message
             greeting_msg = """Hi! 😊 Thank you for your time on the call.
 
 You can check complete course details here:
@@ -1126,6 +1183,9 @@ If you book now with just ₹500, this amount will be adjusted in your course fe
 Reply here if you need any help or want to book a FREE demo class.
 📞 9718888700"""
             await send_ziper_whatsapp(user_phone, greeting_msg)
+            
+            # Send WABridge Video Template
+            await send_wabridge_whatsapp(user_phone)
 
     # We wrap the shutdown callback to ensure it doesn't block forever
     # and handles its own errors gracefully.
