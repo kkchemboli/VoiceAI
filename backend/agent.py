@@ -691,15 +691,14 @@ async def send_wabridge_whatsapp(phone_number, template_id=None, media_url=None)
             "authkey": auth_key,
             "appkey": app_key,
             "device_id": device_id,
-            "destination_number": clean_phone,  # Matching the exact phrasing of the error message
-            "phone": clean_phone,              # Keeping as fallback
+            "destination_number": clean_phone,
             "template_id": template_id,
-            "url": media_url,
+            "media_url": media_url, # Reverting to media_url as per your initial mention
         }
 
         async with aiohttp.ClientSession() as session:
-            # Switching to POST with Form Data (data=params) instead of GET (params=params)
-            async with session.post(url, data=params, ssl=False) as response:
+            # Reverting to JSON POST, which is standard for more complex templates
+            async with session.post(url, json=params, ssl=False) as response:
                 resp_text = await response.text()
                 if response.status in [200, 201]:
                     logger.info(f"Successfully sent WABridge WhatsApp template to {clean_phone}. Response: {resp_text}")
