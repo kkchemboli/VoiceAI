@@ -691,7 +691,8 @@ async def send_wabridge_whatsapp(phone_number, template_id=None, media_url=None)
             "authkey": auth_key,
             "appkey": app_key,
             "device_id": device_id,
-            "phone": clean_phone,  # Reverting to 'phone' but keeping the GET parameter structure
+            "destination_number": clean_phone,  # Matching the exact phrasing of the error message
+            "phone": clean_phone,              # Keeping as fallback
             "template_id": template_id,
             "url": media_url,
         }
