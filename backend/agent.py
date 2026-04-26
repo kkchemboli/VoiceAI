@@ -691,9 +691,9 @@ async def send_wabridge_whatsapp(phone_number, template_id=None, media_url=None)
             "authkey": auth_key,
             "appkey": app_key,
             "device_id": device_id,
-            "phone": clean_phone,
+            "number": clean_phone,  # Changed 'phone' to 'number' as requested by the API error
             "template_id": template_id,
-            "url": media_url,  # Changed media_url to url as per common bridge standards
+            "url": media_url,
         }
 
         async with aiohttp.ClientSession() as session:
