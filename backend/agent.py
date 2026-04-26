@@ -685,23 +685,23 @@ async def send_wabridge_whatsapp(phone_number, template_id=None, media_url=None)
         return
 
     try:
+        # Switching to GET with params, which is more reliable for these types of WhatsApp bridges
         url = "https://web.wabridge.com/api/createmessage"
-        payload = {
+        params = {
             "authkey": auth_key,
             "appkey": app_key,
             "device_id": device_id,
             "phone": clean_phone,
             "template_id": template_id,
-            "media_url": media_url,
-            "message": "" # Template handles the content
+            "url": media_url,  # Changed media_url to url as per common bridge standards
         }
 
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload) as response:
+            async with session.get(url, params=params, ssl=False) as response:
+                resp_text = await response.text()
                 if response.status in [200, 201]:
-                    logger.info(f"Successfully sent WABridge WhatsApp template to {clean_phone}")
+                    logger.info(f"Successfully sent WABridge WhatsApp template to {clean_phone}. Response: {resp_text}")
                 else:
-                    resp_text = await response.text()
                     logger.error(f"WABridge API failed (Status {response.status}): {resp_text}")
     except Exception as e:
         logger.error(f"Error calling WABridge: {e}")
