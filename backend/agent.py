@@ -698,7 +698,8 @@ async def send_wabridge_whatsapp(phone_number, template_id=None, media_url=None)
         }
 
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, params=params, ssl=False) as response:
+            # Switching to POST with Form Data (data=params) instead of GET (params=params)
+            async with session.post(url, data=params, ssl=False) as response:
                 resp_text = await response.text()
                 if response.status in [200, 201]:
                     logger.info(f"Successfully sent WABridge WhatsApp template to {clean_phone}. Response: {resp_text}")
