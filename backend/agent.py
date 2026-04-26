@@ -691,7 +691,7 @@ async def send_wabridge_whatsapp(phone_number, template_id=None, media_url=None)
             "authkey": auth_key,
             "appkey": app_key,
             "device_id": device_id,
-            "number": clean_phone,  # Changed 'phone' to 'number' as requested by the API error
+            "mobile": clean_phone,  # Trying 'mobile' which is common for these bridges
             "template_id": template_id,
             "url": media_url,
         }
