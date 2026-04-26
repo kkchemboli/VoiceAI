@@ -689,16 +689,25 @@ async def send_wabridge_whatsapp(phone_number, template_id=None, media_url=None)
         url = "https://web.wabridge.com/api/createmessage"
         params = {
             "authkey": auth_key,
+            "auth_key": auth_key,  # Providing both variants for compatibility
             "appkey": app_key,
+            "app_key": app_key,    # Providing both variants for compatibility
             "device_id": device_id,
             "destination_number": clean_phone,
             "template_id": template_id,
-            "media_url": media_url, # Reverting to media_url as per your initial mention
+            "media_url": media_url,
+        }
+
+        # Some APIs expect auth keys in the headers to grant permissions
+        headers = {
+            "authkey": auth_key,
+            "appkey": app_key,
+            "Content-Type": "application/json"
         }
 
         async with aiohttp.ClientSession() as session:
-            # Reverting to JSON POST, which is standard for more complex templates
-            async with session.post(url, json=params, ssl=False) as response:
+            # Using both headers and JSON body to ensure the API receives the credentials
+            async with session.post(url, json=params, headers=headers, ssl=False) as response:
                 resp_text = await response.text()
                 if response.status in [200, 201]:
                     logger.info(f"Successfully sent WABridge WhatsApp template to {clean_phone}. Response: {resp_text}")
