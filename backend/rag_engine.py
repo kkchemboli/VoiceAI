@@ -180,8 +180,19 @@ class RAGEngine:
                 logger.info(f"RAG: Extracting text from PDF: {path}")
                 content = self._extract_text_from_pdf(path)
             else:
-                with open(path, "r", encoding="utf-8") as f:
-                    content = f.read()
+                logger.debug(f"RAG: Loading knowledge file: {path}")
+                try:
+                    with open(path, "r", encoding="utf-8-sig") as f:
+                        content = f.read()
+                    logger.debug(f"RAG: Loaded {len(content)} chars from {path}")
+                except UnicodeDecodeError as e:
+                    logger.error(f"RAG: Failed to decode {path} with utf-8-sig: {e}. Trying latin-1...")
+                    with open(path, "r", encoding="latin-1") as f:
+                        content = f.read()
+                    logger.debug(f"RAG: Loaded {len(content)} chars from {path} using latin-1")
+                except Exception as e:
+                    logger.error(f"RAG: Unexpected error loading {path}: {e}")
+                    continue
 
             if content.strip():
                 all_text += content + "\n\n"
