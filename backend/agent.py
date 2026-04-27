@@ -754,7 +754,7 @@ async def entrypoint(ctx: JobContext):
                 kb_files = [
                     os.path.join(base_dir, f)
                     for f in os.listdir(base_dir)
-                    if f.endswith((".txt", ".pdf"))
+                    if f.endswith((".txt", ".pdf")) and f != "requirements.txt"
                 ]
                 logger.debug(f"RAG: Detected {len(kb_files)} knowledge files: {kb_files}")
 
