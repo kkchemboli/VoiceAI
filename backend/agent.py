@@ -756,10 +756,14 @@ async def entrypoint(ctx: JobContext):
                     for f in os.listdir(base_dir)
                     if f.endswith((".txt", ".pdf"))
                 ]
+                logger.debug(f"RAG: Detected {len(kb_files)} knowledge files: {kb_files}")
 
                 if kb_files:
-                    await rag.load_knowledge(kb_files)
-                    logger.info(f"RAG: Indexed {len(kb_files)} local files (TXT/PDF).")
+                    try:
+                        await rag.load_knowledge(kb_files)
+                        logger.info(f"RAG: Indexed {len(kb_files)} local files (TXT/PDF).")
+                    except Exception as e:
+                        logger.error(f"RAG: Failed to load knowledge files: {type(e).__name__}: {e}")
 
                 # Check for Google Sheet URL (Safely)
                 if sheet_url := os.getenv("GOOGLE_SHEET_URL"):
@@ -775,7 +779,7 @@ async def entrypoint(ctx: JobContext):
                     "DEBUG: UNIVERSAL RAG ENGINE LOADED SUCCESSFULLY (PDF + TXT + SHEETS)"
                 )
             except Exception as e:
-                print(f"DEBUG: RAG ENGINE INIT FAILED: {e}")
+                logger.error(f"RAG: Initialization failed: {type(e).__name__}: {e}")
     except Exception as e:
         print(f"DEBUG: CONNECTION FAILED: {e}")
         return
@@ -877,7 +881,12 @@ async def entrypoint(ctx: JobContext):
     elif rag_engine:
         logger.info("RAG engine loaded from prewarm userdata (local files).")
     else:
-        logger.warning("RAG engine not available — knowledge retrieval disabled.")
+        has_openai_key = bool(os.getenv("OPENAI_API_KEY"))
+        has_rag_in_userdata = "rag" in ctx.proc.userdata
+        logger.warning(
+            f"RAG engine not available — knowledge retrieval disabled. "
+            f"openai_key_present={has_openai_key}, rag_in_userdata={has_rag_in_userdata}"
+        )
 
     # Initial Chat Context - this defines the persona and system rules
     initial_ctx = llm.ChatContext()
