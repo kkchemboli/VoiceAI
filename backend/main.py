@@ -354,7 +354,7 @@ async def trigger_bulk_dialer():
     
     # We run it in the background as it can take a long time (sequential calling)
     asyncio.create_task(run_bulk_dialer())
-    return {"success": True, "message": "Bulk dialing campaign started in background."}
+    return {"success": True, "message": "Campaign queue loaded in background."}
 
 
 @app.post("/api/config/sheet-url")

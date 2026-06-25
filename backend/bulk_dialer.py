@@ -133,7 +133,7 @@ async def run_bulk_dialer():
                         .insert(
                             {
                                 "phone_number": phone,
-                                "status": "calling",
+                                "status": "pending",
                             }
                         )
                         .execute()
@@ -143,8 +143,10 @@ async def run_bulk_dialer():
                         logger.info(
                             f"Created queue entry for {name} (ID: {call_record_id})"
                         )
+                        count += 1
                 except Exception as e:
                     logger.error(f"Failed to create Supabase record for {name}: {e}")
+                    failed_count += 1
             else:
                 # Fallback to in-memory queue
                 call_id = len(outbound_queue) + 1
@@ -153,45 +155,19 @@ async def run_bulk_dialer():
                     {
                         "id": call_record_id,
                         "phone": phone,
-                        "status": "calling",
+                        "status": "pending",
                         "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                        "name": name,
+                        "course": course
                     }
                 )
                 logger.info(f"Added {name} to in-memory queue (ID: {call_record_id})")
-
-            # Step 2: Trigger the call (Reuse vobiz_outbound logic)
-            # wait_for_completion=True ensures we don't call the next student until this one is done
-            await make_outbound_call(phone, name, course, wait_for_completion=True)
-            status = "success"
-            count += 1
-            logger.info(f"Call completed successfully for {name}")
+                count += 1
 
         except Exception as e:
             error_msg = str(e)
             failed_count += 1
-            logger.error(f"Failed to dispatch call for {name}: {e}")
-
-        finally:
-            # Step 3: Update queue entry with final status
-            if supabase and call_record_id:
-                try:
-                    supabase.table("outbound_calls").update(
-                        {"status": status, "error_message": error_msg}
-                    ).eq("id", call_record_id).execute()
-                    logger.info(f"Updated queue entry for {name} to status: {status}")
-                except Exception as e:
-                    logger.error(f"Failed to update Supabase record for {name}: {e}")
-            elif not supabase and call_record_id:
-                # Update in-memory queue entry
-                for item in outbound_queue:
-                    if item["id"] == call_record_id:
-                        item["status"] = status
-                        if error_msg:
-                            item["error"] = error_msg
-                        break
-                logger.info(
-                    f"Updated in-memory queue entry for {name} to status: {status}"
-                )
+            logger.error(f"Failed to process {name}: {e}")
 
             # Small 2 second gap for system cleanup before the next dial
             await asyncio.sleep(2)

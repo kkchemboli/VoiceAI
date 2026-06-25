@@ -13,6 +13,7 @@ FROM python:3.12-slim
 # libgomp1 is needed for faiss-cpu/onnxruntime
 RUN apt-get update && apt-get install -y \
     supervisor \
+    redis-server \
     libgomp1 \
     tzdata \
     && rm -rf /var/lib/apt/lists/*
