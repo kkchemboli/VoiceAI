@@ -41,12 +41,12 @@ if SUPABASE_URL and SUPABASE_KEY:
 def process_campaign_queue():
     logger.info("Cron triggered: Checking Campaign Queue...")
     
-    # Enforce IST time window (9 AM to 6 PM)
+    # Enforce IST time window (8 AM to 8 PM)
     ist = pytz.timezone('Asia/Kolkata')
     now_ist = datetime.datetime.now(ist)
     
-    if now_ist.hour < 9 or now_ist.hour >= 18:
-        logger.info(f"[{now_ist.strftime('%H:%M:%S')} IST] Outside of allowed calling window (09:00 - 18:00). Skipping.")
+    if now_ist.hour < 8 or now_ist.hour >= 20:
+        logger.info(f"[{now_ist.strftime('%H:%M:%S')} IST] Outside of allowed calling window (08:00 - 20:00). Skipping.")
         return
         
     logger.info(f"[{now_ist.strftime('%H:%M:%S')} IST] Inside calling window. Querying pending calls...")
