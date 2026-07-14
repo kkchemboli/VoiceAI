@@ -275,7 +275,7 @@ IMPORTANT: DO NOT MENTION PRICE UNTIL USER ASKS FOR IT SPECIFICALLY.
 3. DATA COLLECTION:
    Ask phone number after date selection.
 4. TOOL 2:
-   schedule_demo_class(slot_id, phone_number, name)
+   schedule_demo_class(selected_slot, phone_number, name)
 ### PHASE 4: PRICING
 1. Tell both original & discounted price.
 2. Discounts:
@@ -288,7 +288,8 @@ IMPORTANT: NEVER act like support team. ALWAYS transfer if needed.
 ### TOOL CALL FORMAT (IMPORTANT)
 Use JSON format for all function/tool calls:
 {"name": "function_name", "parameters": {"arg1": "value1", "arg2": "value2"}}
-Functions available: list_available_slots, schedule_demo_class(slot_id, phone_number, name)
+Functions available: list_available_slots, schedule_demo_class(selected_slot, phone_number, name)
+IMPORTANT: When presenting available slots to the user, ONLY mention the day, date, and time. NEVER mention internal slot IDs, hashes, or any technical identifiers.
 ---
 ### FEW-SHOT EXAMPLE (ENGLISH)
 Agent: Hi, thanks for calling Expert Institute! How can i help you?
@@ -329,7 +330,7 @@ Customer: Monday 30th March wala date theek rahega.
 Agent: Okay! अपना phone number बता दीजिये ताकि मैं booking confirm कर सकूँ?
 Customer: 9876543210.
 Agent: I am booking your appointment now.
-{"name": "schedule_demo_class", "parameters": {"slot_id": "slot_monday_30", "phone_number": "9876543210", "name": "Rahul"}}
+{"name": "schedule_demo_class", "parameters": {"selected_slot": "Monday 30 March 2026 at 10:00 AM", "phone_number": "9876543210", "name": "Rahul"}}
 Agent: Done! आपकी demo class book हो गई है। क्या मैं आपकी और किसी चीज़ में help कर सकती hoon?
 Customer: Nahi, thank you.
 Customer: ek minute, aapka naam kya hai?
@@ -929,36 +930,47 @@ async def entrypoint(ctx: JobContext):
     booking_info = {"booked": False, "name": "", "phone": "", "date": "", "time": ""}
 
     @llm.function_tool(
-        description="Get available appointment slots for demo classes. Returns a list of slots, one per line. Use this to check availability."
+        description="Get available appointment slots for demo classes. Returns slots grouped by day with available times. Use this to check availability."
     )
     async def list_available_slots():
         now = datetime.datetime.now(tz_info)
         range_days = 30
-        lines = []
-        for slot in await cal.list_available_slots(
+        slots = await cal.list_available_slots(
             start_time=now, end_time=now + datetime.timedelta(days=range_days)
-        ):
-            local = slot.start_time.astimezone(tz_info)
-            lines.append(
-                f"slot_id: {slot.unique_hash} - {_format_date_human(local, now)}"
-            )
-            _slots_map[slot.unique_hash] = slot
+        )
 
-        if not lines:
+        if not slots:
             return "No slots available at the moment."
+
+        # Group slots by date
+        from collections import defaultdict
+        day_map = defaultdict(list)
+        for slot in slots:
+            local = slot.start_time.astimezone(tz_info)
+            day_key = local.strftime("%A %d %B %Y")
+            time_str = local.strftime("%I:%M %p")
+            day_map[day_key].append((time_str, slot))
+
+        lines = []
+        for day, times in sorted(day_map.items()):
+            time_list = ", ".join(t for t, _ in sorted(times))
+            lines.append(f"{day}: {time_list}")
+            for time_str, slot in times:
+                _slots_map[f"{day} at {time_str}"] = slot
+
         return "\n".join(lines)
 
     @llm.function_tool(
-        description="Schedule a demo class appointment. Call this after the user agrees and provides their name and phone number. Requires the slot_id from list_available_slots."
+        description="Schedule a demo class appointment. Call this after the user agrees and provides their name and phone number. Use the exact date and time string from list_available_slots."
     )
     async def schedule_demo_class(
-        slot_id: str,
+        selected_slot: str,
         phone_number: str,
         name: str,
     ):
-        slot = _slots_map.get(slot_id)
+        slot = _slots_map.get(selected_slot)
         if not slot:
-            return f"Error: Slot {slot_id} not found. Please list_available_slots again or ask the user for a valid time."
+            return f"Error: Slot '{selected_slot}' not found. Please call list_available_slots again."
 
         try:
             result = await cal.schedule_appointment(
