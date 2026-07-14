@@ -1260,15 +1260,14 @@ Reply here if you need any help or want to book a FREE demo class.
                 autocut_triggered[0] = True
                 logger.info("AUTOCUT: 60s inactivity. Ending call.")
                 try:
-                    await session.say(
+                    handle = session.say(
                         "It seems the line has gone quiet. Goodbye!",
                         allow_interruptions=False,
                     )
-                    await asyncio.sleep(3)  # let TTS finish playing
+                    await handle.wait_for_playout()
                 except Exception:
                     pass
-                session.shutdown()
-                break
+                await session.aclose()
 
     try:
         await autocut_monitor()
