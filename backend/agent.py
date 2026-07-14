@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import re
+import time
 import aiohttp
 import json
 from typing import AsyncIterable, Optional
@@ -1050,6 +1051,15 @@ async def entrypoint(ctx: JobContext):
     # Removed duplicate deterministic intent code and event handlers
     # since it's now embedded directly inside the STT generation loop.
 
+    # --- Autocut state: end call after 60s of user inactivity ---
+    AUTOCUT_TIMEOUT = 60  # seconds of inactivity before ending the call
+
+    last_user_speech_time = [time.time()]
+    autocut_triggered = [False]
+
+    def reset_autocut_timer():
+        last_user_speech_time[0] = time.time()
+
     # Log LLM text to see if it's hallucinating tool calls as text
     @session.on("agent_transcript_finished")
     def on_agent_transcript_finished(transcript: str):
@@ -1080,6 +1090,7 @@ async def entrypoint(ctx: JobContext):
             user_text = transcript.alternatives[0].text
             print(f"\n👤 USER: {user_text}\n")
             logger.info(f"User (STT) said: {user_text}")
+            reset_autocut_timer()
 
     @ctx.room.on("track_subscribed")
     def on_track_subscribed(
@@ -1126,6 +1137,9 @@ async def entrypoint(ctx: JobContext):
     except (RuntimeError, Exception) as e:
         logger.warning(f"Could not send initial greeting: {e}")
         print(f"DEBUG: GREETING FAILED: {e}")
+
+    # Start autocut countdown from after greeting is sent
+    reset_autocut_timer()
 
     # When the participant disconnects, trigger the summary flow
     async def send_summary():
@@ -1218,16 +1232,38 @@ Reply here if you need any help or want to book a FREE demo class.
 
     ctx.add_shutdown_callback(safe_shutdown)
 
-    # Keep the entrypoint alive while the room is connected to prevent early job exit
+    # Keep the entrypoint alive while the room is connected to prevent early job exit.
+    # Also runs autocut monitor to end call after prolonged user inactivity.
     logger.info("Greeting phase finished. Entrypoint persistence active.")
-    try:
+
+    async def autocut_monitor():
+        """End the call after 60s of user inactivity."""
         while ctx.room.isconnected():
-            logger.info("Agent is listening for user speech...")
-            await asyncio.sleep(10)  # Heartbeat every 10 seconds
+            await asyncio.sleep(5)
+
+            if autocut_triggered[0]:
+                continue
+
+            if time.time() - last_user_speech_time[0] >= AUTOCUT_TIMEOUT:
+                autocut_triggered[0] = True
+                logger.info("AUTOCUT: 60s inactivity. Ending call.")
+                try:
+                    await session.say(
+                        "It seems the line has gone quiet. Goodbye!",
+                        allow_interruptions=False,
+                    )
+                    await asyncio.sleep(3)  # let TTS finish playing
+                except Exception:
+                    pass
+                session.shutdown()
+                break
+
+    try:
+        await autocut_monitor()
     except Exception as e:
-        logger.error(f"Error in persistence loop: {e}")
+        logger.error(f"Error in autocut monitor: {e}")
     finally:
-        logger.info("Room disconnected or job ending - Entrypoint exiting.")
+        logger.info("Room disconnected or autocut triggered - Entrypoint exiting.")
 
 
 if __name__ == "__main__":
