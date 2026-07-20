@@ -146,8 +146,8 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 WABRIDGE_AUTH_KEY = os.getenv("WABRIDGE_AUTH_KEY")
 WABRIDGE_APP_KEY = os.getenv("WABRIDGE_APP_KEY")
 WABRIDGE_DEVICE_ID = os.getenv("WABRIDGE_DEVICE_ID")
-WABRIDGE_MEDIA_URL = os.getenv("WABRIDGE_MEDIA_URL")
 WABRIDGE_TEMPLATE_ID = os.getenv("WABRIDGE_TEMPLATE_ID")
+WABRIDGE_MEDIA_TYPE = os.getenv("WABRIDGE_MEDIA_TYPE", "text")
 
 DEFAULT_GREETING = (
     "Hello! Thank you for calling Expert Institute. How can I help you today?"
@@ -664,51 +664,38 @@ async def send_ziper_whatsapp(phone_number, message_text):
         logger.error(f"Error calling Ziper.io: {e}")
 
 
-async def send_wabridge_whatsapp(phone_number, template_id=None, media_url=None):
+async def send_wabridge_whatsapp(phone_number, template_id=None):
     """
-    WABridge WhatsApp API integration to send template messages with media.
+    WABridge WhatsApp API integration to send template messages.
+    Uses GET request with query params matching the WABridge createmessage endpoint.
     """
     if not phone_number:
         return
 
-    # Formatting: 91 prefix, no +
     clean_phone = phone_number.replace("+", "")
     if not clean_phone.startswith("91"):
         clean_phone = "91" + clean_phone
 
     logger.info(f"Preparing to send WABridge template message to {clean_phone}...")
 
-    auth_key = WABRIDGE_AUTH_KEY
-    app_key = WABRIDGE_APP_KEY
-    device_id = WABRIDGE_DEVICE_ID
-    
-    # Use provided template/media or fallback to environment variables
-    template_id = template_id or WABRIDGE_TEMPLATE_ID
-    media_url = media_url or WABRIDGE_MEDIA_URL
-
-    if not all([auth_key, app_key, device_id, template_id]):
+    if not all([WABRIDGE_AUTH_KEY, WABRIDGE_APP_KEY, WABRIDGE_DEVICE_ID, WABRIDGE_TEMPLATE_ID]):
         logger.error("WABridge credentials or Template ID missing! Please check your .env file.")
         return
 
     try:
-        # Switching to GET with params, which is more reliable for these types of WhatsApp bridges
         url = "https://web.wabridge.com/api/createmessage"
         params = {
-            "authkey": auth_key,
-            "apikey": auth_key,    # Some versions use apikey instead of authkey
-            "auth_key": auth_key,
-            "appkey": app_key,
-            "app_key": app_key,
-            "device_id": device_id,
+            "auth-key": WABRIDGE_AUTH_KEY,
+            "app-key": WABRIDGE_APP_KEY,
+            "device_id": WABRIDGE_DEVICE_ID,
             "destination_number": clean_phone,
-            "phone": clean_phone,   # Adding phone back as fallback
-            "template_id": template_id,
-            "media_url": media_url,
+            "template_id": template_id or WABRIDGE_TEMPLATE_ID,
+            "variables": "[]",
+            "media_type": WABRIDGE_MEDIA_TYPE,
         }
 
         async with aiohttp.ClientSession() as session:
-            # Using Form Data (data=params) which is typically required for 'createmessage' endpoints
-            async with session.post(url, data=params, ssl=False) as response:
+            async with session.get(url, params=params, ssl=False) as response:
                 resp_text = await response.text()
                 if response.status in [200, 201]:
                     logger.info(f"Successfully sent WABridge WhatsApp template to {clean_phone}. Response: {resp_text}")
