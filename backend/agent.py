@@ -999,7 +999,7 @@ async def entrypoint(ctx: JobContext):
     # Component Initialization for Demo
     # Using gpt-oss-120b for enhanced capabilities.
     llm_node = groq.LLM(
-        model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0.1
+        model="openai/gpt-oss-120b", temperature=0.1
     )
     """llm_node = openai.LLM(model="gpt-5.4-nano", temperature=0.1)"""
     # Using Sarvam Saaras v3 for high-quality localized STT with auto-detection
