@@ -9,7 +9,7 @@ import re
 import time
 import aiohttp
 import json
-from typing import AsyncIterable, Optional
+from typing import AsyncIterable, Callable, Optional
 
 from rag_engine import RAGEngine
 
@@ -406,11 +406,18 @@ class ExpertInstituteAgent(Agent):
         "en": {"lang": "en-IN", "speaker": "roopa", "pace": 1.05},
     }
 
-    def __init__(self, fnc_ctx=None, rag_engine=None, **kwargs):
+    def __init__(
+        self,
+        fnc_ctx=None,
+        rag_engine=None,
+        on_user_activity: Optional[Callable[[str], None]] = None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self._current_lang: Optional[str] = None
         self._fnc_ctx = fnc_ctx
         self._rag_engine = rag_engine
+        self._on_user_activity = on_user_activity
 
     async def on_user_turn_completed(
         self, turn_ctx: llm.ChatContext, new_message: llm.ChatMessage
@@ -483,6 +490,8 @@ class ExpertInstituteAgent(Agent):
                 if event.type == stt.SpeechEventType.FINAL_TRANSCRIPT:
                     if event.alternatives and event.alternatives[0].text:
                         text = event.alternatives[0].text.lower()
+                        if self._on_user_activity:
+                            self._on_user_activity(text)
 
                         # 1. Language Locking (First Interaction)
                         if self._current_lang is None:
@@ -1029,6 +1038,18 @@ async def entrypoint(ctx: JobContext):
     # Initialize tools (using the new TransferFunctions framework)
     fnc_ctx = TransferFunctions(ctx, user_phone)
 
+    # --- Autocut state: end call after 60s of user inactivity ---
+    AUTOCUT_TIMEOUT = 60  # seconds of inactivity before ending the call
+
+    last_user_speech_time = [time.monotonic()]
+    autocut_triggered = [False]
+    agent_is_speaking = [False]
+    user_is_speaking = [False]
+
+    def reset_autocut_timer(reason: str = "activity"):
+        last_user_speech_time[0] = time.monotonic()
+        logger.info(f"AUTOCUT: timer reset due to {reason}.")
+
     # Define the Agent
     agent = ExpertInstituteAgent(
         instructions=initial_ctx.messages()[0].text_content,
@@ -1037,6 +1058,7 @@ async def entrypoint(ctx: JobContext):
         tts=tts_node,
         fnc_ctx=fnc_ctx,
         rag_engine=rag_engine,
+        on_user_activity=lambda text: reset_autocut_timer("final STT transcript"),
     )
 
     # Create the session
@@ -1059,15 +1081,6 @@ async def entrypoint(ctx: JobContext):
     # Removed duplicate deterministic intent code and event handlers
     # since it's now embedded directly inside the STT generation loop.
 
-    # --- Autocut state: end call after 60s of user inactivity ---
-    AUTOCUT_TIMEOUT = 60  # seconds of inactivity before ending the call
-
-    last_user_speech_time = [time.time()]
-    autocut_triggered = [False]
-
-    def reset_autocut_timer():
-        last_user_speech_time[0] = time.time()
-
     # Log LLM text to see if it's hallucinating tool calls as text
     @session.on("conversation_item_added")
     def on_conversation_item_added(event: ConversationItemAddedEvent):
@@ -1080,28 +1093,37 @@ async def entrypoint(ctx: JobContext):
             logger.info(f"Agent (LLM) says: {transcript}")
             msg_count = len(session.history.messages())
             logger.info(f"DEBUG: History after agent response: {msg_count} messages")
+            agent_is_speaking[0] = False
+            reset_autocut_timer("assistant response finished")
 
     @session.on("agent_state_changed")
     def on_agent_state_changed(event: AgentStateChangedEvent):
         if event.new_state == "speaking":
+            agent_is_speaking[0] = True
             logger.info("Agent STARTED speaking (Audio bits flowing)...")
         elif event.new_state == "idle":
+            agent_is_speaking[0] = False
             logger.info("Agent STOPPED speaking.")
-            reset_autocut_timer()
+            reset_autocut_timer("agent became idle")
 
     @session.on("user_state_changed")
     def on_user_state_changed(event: UserStateChangedEvent):
         if event.new_state == "speaking":
+            user_is_speaking[0] = True
+            reset_autocut_timer("user started speaking")
             logger.info("!!! INTERRUPTION: User started speaking (interrupting agent)...")
             msg_count = len(session.history.messages())
             logger.info(f"DEBUG: History at interruption time: {msg_count} messages")
+        elif event.new_state in ("listening", "idle"):
+            user_is_speaking[0] = False
 
     @session.on("user_input_transcribed")
     def on_user_input_transcribed(event: UserInputTranscribedEvent):
         if event.is_final:
             print(f"\n👤 USER: {event.transcript}\n")
             logger.info(f"User (STT) said: {event.transcript}")
-            reset_autocut_timer()
+            user_is_speaking[0] = False
+            reset_autocut_timer("user_input_transcribed event")
 
     @ctx.room.on("track_subscribed")
     def on_track_subscribed(
@@ -1150,7 +1172,7 @@ async def entrypoint(ctx: JobContext):
         print(f"DEBUG: GREETING FAILED: {e}")
 
     # Start autocut countdown from after greeting is sent
-    reset_autocut_timer()
+    reset_autocut_timer("greeting sent")
 
     # When the participant disconnects, trigger the summary flow
     async def send_summary():
@@ -1255,9 +1277,15 @@ Reply here if you need any help or want to book a FREE demo class.
             if autocut_triggered[0]:
                 continue
 
-            if time.time() - last_user_speech_time[0] >= AUTOCUT_TIMEOUT:
+            if agent_is_speaking[0] or user_is_speaking[0]:
+                continue
+
+            idle_seconds = time.monotonic() - last_user_speech_time[0]
+            if idle_seconds >= AUTOCUT_TIMEOUT:
                 autocut_triggered[0] = True
-                logger.info("AUTOCUT: 60s inactivity. Ending call.")
+                logger.info(
+                    f"AUTOCUT: {int(idle_seconds)}s user inactivity. Ending call."
+                )
                 try:
                     handle = session.say(
                         "It seems the line has gone quiet. Goodbye!",
