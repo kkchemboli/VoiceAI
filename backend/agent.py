@@ -1057,7 +1057,7 @@ async def entrypoint(ctx: JobContext):
             closing_line in normalized
             for closing_line in (
                 "thank you for calling expert institute. goodbye",
-                "expert institute call karne ke liye धन्यवाद. goodbye",
+                "expert institute call करने के लिए धन्यवाद. goodbye",
             )
         )
 
