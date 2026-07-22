@@ -174,7 +174,7 @@ TONE: Realistic, human-like, engaging, and professional.
 
 ### HINGLISH & SCRIPT RULES (HINDI MODE ONLY)
 - Mix Hindi + English naturally. 
-- Use Roman script (English letters) for all responses.
+- Write Hindi words in Devanagari script, English words in English script.
 - Speak like a friendly 20–30 year old Indian customer support agent.
 
 ### PHASE 1: GREETING & PURPOSE
@@ -217,15 +217,15 @@ TONE: Realistic, human-like, engaging. No robotic language.
 2. MODERN HINGLISH:
    Speak like a real 20–30 year old Indian customer support agent.
    Mix Hindi + English naturally.
-   Example:
-   ❌ "आपकी समस्या का समाधान किया जाएगा"
-   ✅ "Main aapki problem solve kar deti hoon"
+    Example:
+    ❌ "आपकी समस्या का समाधान किया जाएगा"
+    ✅ "मैं आपकी problem solve कर देती हूँ"
 3. KEYWORDS: Use English for: Mobile, Laptop, CCTV, Repairing, Course, Batch, Practical, FreeDemo Class, Placement, Support, Discount.
-4. SCRIPT: Write ALL Hindi/Hinglish responses in Roman script only. 
+4. SCRIPT: Write Hindi words in Devanagari script, English words in English script. 
 Speak in natural, conversational Hinglish like a friendly 20–30 year old Indian customer support agent.
 Keep it casual but clear and professional. 
 Avoid pure Hindi and avoid overly slangy or broken sentences.
-Example: "main aapko explain karti hoon", "aap kaunsa course dekh rahe ho?"
+Example: "मैं आपको explain करती हूँ", "आप कौन सा course देख रहे हो?"
 ### CONVERSATIONAL CONSTRAINTS
 - No paragraphs. Explain max TWO benefits.
 - Use back-channeling ('hmm', 'right').
@@ -999,6 +999,7 @@ async def entrypoint(ctx: JobContext):
     stt_node = sarvam.STT(
         model="saaras:v3",
         language="unknown",
+        mode="codemix",
     )
 
     tts_node = sarvam.TTS(
@@ -1041,16 +1042,18 @@ async def entrypoint(ctx: JobContext):
     # Create the session
     # min_endpointing_delay (0.4) standard safe value so sentences aren't cut in half
     # min_interruption_duration (0.3) allows user to interrupt the agent much easier
-    # preemptive_generation (False): Re-enabled for near-zero lag.
+    # preemptive_generation (False): Retained for reliable RAG delivery.
     session = AgentSession(
         vad=ctx.proc.userdata["vad"],
         stt=stt_node,
         llm=llm_node,
         tts=tts_node,
         tools=fnc_ctx.flatten() + [list_available_slots, schedule_demo_class],
-        min_endpointing_delay=0.4,
-        min_interruption_duration=0.3,
-        preemptive_generation=False,
+        turn_handling={
+            "endpointing": {"min_delay": 0.4},
+            "interruption": {"min_duration": 0.3},
+            "preemptive_generation": {"enabled": False},
+        },
     )
 
     # Removed duplicate deterministic intent code and event handlers
@@ -1084,6 +1087,7 @@ async def entrypoint(ctx: JobContext):
             logger.info("Agent STARTED speaking (Audio bits flowing)...")
         elif event.new_state == "idle":
             logger.info("Agent STOPPED speaking.")
+            reset_autocut_timer()
 
     @session.on("user_state_changed")
     def on_user_state_changed(event: UserStateChangedEvent):
