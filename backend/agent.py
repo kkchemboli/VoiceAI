@@ -23,6 +23,12 @@ from livekit.agents import (
     stt,
 )
 from livekit.agents.voice import Agent, AgentSession
+from livekit.agents.voice.events import (
+    UserInputTranscribedEvent,
+    UserStateChangedEvent,
+    AgentStateChangedEvent,
+    ConversationItemAddedEvent,
+)
 import livekit.plugins.groq as groq
 import livekit.plugins.sarvam as sarvam
 import livekit.plugins.silero as silero
@@ -1060,35 +1066,37 @@ async def entrypoint(ctx: JobContext):
         last_user_speech_time[0] = time.time()
 
     # Log LLM text to see if it's hallucinating tool calls as text
-    @session.on("agent_transcript_finished")
-    def on_agent_transcript_finished(transcript: str):
-        print(f"\n🤖 AGENT: {transcript}\n")
-        logger.info(f"Agent (LLM) says: {transcript}")
-        # Log history state after agent response
-        msg_count = len(session.history.messages())
-        logger.info(f"DEBUG: History after agent response: {msg_count} messages")
+    @session.on("conversation_item_added")
+    def on_conversation_item_added(event: ConversationItemAddedEvent):
+        from livekit.agents.llm.chat_context import ChatMessage
+        if isinstance(event.item, ChatMessage) and event.item.role == "assistant":
+            transcript = " ".join(
+                c for c in event.item.content if isinstance(c, str)
+            )
+            print(f"\n🤖 AGENT: {transcript}\n")
+            logger.info(f"Agent (LLM) says: {transcript}")
+            msg_count = len(session.history.messages())
+            logger.info(f"DEBUG: History after agent response: {msg_count} messages")
 
-    @session.on("agent_started_speaking")
-    def on_agent_started_speaking():
-        logger.info("Agent STARTED speaking (Audio bits flowing)...")
+    @session.on("agent_state_changed")
+    def on_agent_state_changed(event: AgentStateChangedEvent):
+        if event.new_state == "speaking":
+            logger.info("Agent STARTED speaking (Audio bits flowing)...")
+        elif event.new_state == "idle":
+            logger.info("Agent STOPPED speaking.")
 
-    @session.on("agent_stopped_speaking")
-    def on_agent_stopped_speaking():
-        logger.info("Agent STOPPED speaking.")
+    @session.on("user_state_changed")
+    def on_user_state_changed(event: UserStateChangedEvent):
+        if event.new_state == "speaking":
+            logger.info("!!! INTERRUPTION: User started speaking (interrupting agent)...")
+            msg_count = len(session.history.messages())
+            logger.info(f"DEBUG: History at interruption time: {msg_count} messages")
 
-    @session.on("user_started_speaking")
-    def on_user_started_speaking():
-        logger.info("!!! INTERRUPTION: User started speaking (interrupting agent)...")
-        # Log current history state at interruption time
-        msg_count = len(session.history.messages())
-        logger.info(f"DEBUG: History at interruption time: {msg_count} messages")
-
-    @session.on("user_speech_committed")
-    def on_user_speech_committed(transcript: stt.SpeechEvent):
-        if transcript.alternatives:
-            user_text = transcript.alternatives[0].text
-            print(f"\n👤 USER: {user_text}\n")
-            logger.info(f"User (STT) said: {user_text}")
+    @session.on("user_input_transcribed")
+    def on_user_input_transcribed(event: UserInputTranscribedEvent):
+        if event.is_final:
+            print(f"\n👤 USER: {event.transcript}\n")
+            logger.info(f"User (STT) said: {event.transcript}")
             reset_autocut_timer()
 
     @ctx.room.on("track_subscribed")
