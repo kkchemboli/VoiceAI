@@ -1045,10 +1045,55 @@ async def entrypoint(ctx: JobContext):
     autocut_triggered = [False]
     agent_is_speaking = [False]
     user_is_speaking = [False]
+    user_requested_hangup = [False]
 
     def reset_autocut_timer(reason: str = "activity"):
         last_user_speech_time[0] = time.monotonic()
         logger.info(f"AUTOCUT: timer reset due to {reason}.")
+
+    def is_closing_assistant_message(text: str) -> bool:
+        normalized = re.sub(r"\s+", " ", text.lower()).strip()
+        return any(
+            closing_line in normalized
+            for closing_line in (
+                "thank you for calling expert institute. goodbye",
+                "expert institute call karne ke liye धन्यवाद. goodbye",
+            )
+        )
+
+    def is_soft_closing_assistant_message(text: str) -> bool:
+        normalized = text.lower()
+        return "goodbye" in normalized or "good bye" in normalized or "bye" in normalized
+
+    async def hang_up_call(reason: str):
+        if autocut_triggered[0]:
+            return
+
+        autocut_triggered[0] = True
+        logger.info(f"AUTOCUT: {reason}. Ending call.")
+        try:
+            await session.aclose()
+        except Exception as e:
+            logger.warning(f"Could not close agent session during hangup: {e}")
+
+        livekit_url = os.getenv("LIVEKIT_URL")
+        livekit_key = os.getenv("LIVEKIT_API_KEY")
+        livekit_secret = os.getenv("LIVEKIT_API_SECRET")
+        if not all([livekit_url, livekit_key, livekit_secret]):
+            return
+
+        lkapi = api.LiveKitAPI(livekit_url, livekit_key, livekit_secret)
+        try:
+            await lkapi.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
+        except Exception as e:
+            logger.warning(f"Could not delete LiveKit room during hangup: {e}")
+        finally:
+            await lkapi.aclose()
+
+    async def close_after_assistant_closing():
+        await asyncio.sleep(0.5)
+        if ctx.room.isconnected():
+            await hang_up_call("assistant closing detected")
 
     # Define the Agent
     agent = ExpertInstituteAgent(
@@ -1095,6 +1140,16 @@ async def entrypoint(ctx: JobContext):
             logger.info(f"DEBUG: History after agent response: {msg_count} messages")
             agent_is_speaking[0] = False
             reset_autocut_timer("assistant response finished")
+            
+            # 1. Primary: Exact phrase detection
+            if is_closing_assistant_message(transcript):
+                logger.info("AUTOCUT: Exact assistant closing phrase detected.")
+                asyncio.create_task(close_after_assistant_closing())
+            
+            # 2. Fallback: User said 'bye' and agent responded with a soft closing
+            elif user_requested_hangup[0] and is_soft_closing_assistant_message(transcript):
+                logger.info("AUTOCUT: User requested hangup + soft assistant closing detected.")
+                asyncio.create_task(close_after_assistant_closing())
 
     @session.on("agent_state_changed")
     def on_agent_state_changed(event: AgentStateChangedEvent):
@@ -1123,6 +1178,9 @@ async def entrypoint(ctx: JobContext):
             print(f"\n👤 USER: {event.transcript}\n")
             logger.info(f"User (STT) said: {event.transcript}")
             user_is_speaking[0] = False
+            if re.search(r"\b(bye|goodbye|good bye|bas|bas itna hi|nahi|that is all|that's all)\b", event.transcript.lower()):
+                user_requested_hangup[0] = True
+                logger.info("AUTOCUT: user hangup intent detected.")
             reset_autocut_timer("user_input_transcribed event")
 
     @ctx.room.on("track_subscribed")
@@ -1282,7 +1340,6 @@ Reply here if you need any help or want to book a FREE demo class.
 
             idle_seconds = time.monotonic() - last_user_speech_time[0]
             if idle_seconds >= AUTOCUT_TIMEOUT:
-                autocut_triggered[0] = True
                 logger.info(
                     f"AUTOCUT: {int(idle_seconds)}s user inactivity. Ending call."
                 )
@@ -1294,7 +1351,7 @@ Reply here if you need any help or want to book a FREE demo class.
                     await handle.wait_for_playout()
                 except Exception:
                     pass
-                await session.aclose()
+                await hang_up_call("inactivity timeout")
 
     try:
         await autocut_monitor()
