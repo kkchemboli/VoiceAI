@@ -1046,6 +1046,7 @@ async def entrypoint(ctx: JobContext):
     agent_is_speaking = [False]
     user_is_speaking = [False]
     user_requested_hangup = [False]
+    summary_sent = [False]
 
     def reset_autocut_timer(reason: str = "activity"):
         last_user_speech_time[0] = time.monotonic()
@@ -1234,6 +1235,9 @@ async def entrypoint(ctx: JobContext):
 
     # When the participant disconnects, trigger the summary flow
     async def send_summary():
+        if summary_sent[0]:
+            return
+
         call_end_time = datetime.datetime.now()
         duration_seconds = int((call_end_time - call_start_time).total_seconds())
         minutes = duration_seconds // 60
@@ -1310,14 +1314,13 @@ Reply here if you need any help or want to book a FREE demo class.
             # Send WABridge Video Template
             await send_wabridge_whatsapp(user_phone)
 
+        summary_sent[0] = True
+
     # We wrap the shutdown callback to ensure it doesn't block forever
     # and handles its own errors gracefully.
     async def safe_shutdown():
         try:
-            # Setting a reasonable timeout for the summary/whatsapp tasks
-            await asyncio.wait_for(send_summary(), timeout=10)
-        except asyncio.TimeoutError:
-            logger.warning("Summary task timed out during shutdown.")
+            await send_summary()
         except Exception as e:
             logger.error(f"Error during shutdown summary: {e}")
 
