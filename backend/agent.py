@@ -634,6 +634,35 @@ async def generate_call_summary(chat_messages, user_phone=None, booking_info=Non
 # AssistantTools replaced by TransferFunctions (see transfer_functions.py)
 
 
+def _normalize_phone_e164(phone_str):
+    """
+    Normalize an Indian phone number to E.164-like format without '+'.
+    Handles: '+91XXXXXXXXXX', '0XXXXXXXXXX' (trunk prefix), '91XXXXXXXXXX',
+             'XXXXXXXXXX', and outbound SIP identities with UUID suffix (e.g. '918652153375_a3f2').
+    Returns 12-digit string (91 + 10-digit mobile) or the best-effort cleaned string.
+    """
+    if not phone_str:
+        return None
+
+    clean = str(phone_str).strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+    clean = clean.lstrip("+")
+
+    if "_" in clean:
+        clean = clean.split("_")[0]
+
+    if clean.startswith("0"):
+        clean = clean[1:]
+
+    if clean.startswith("91") and len(clean) == 12:
+        return clean
+
+    if len(clean) == 10 and clean[0] in "6789":
+        return "91" + clean
+
+    logger.warning(f"Could not normalize phone number: {phone_str} -> {clean}")
+    return clean
+
+
 async def send_ziper_whatsapp(phone_number, message_text):
     """
     Ziper.io WhatsApp API integration using standard URL parameters.
@@ -641,10 +670,7 @@ async def send_ziper_whatsapp(phone_number, message_text):
     if not phone_number:
         return
 
-    # Ensure phone number has country code (Ziper expects 91 prefix)
-    clean_phone = phone_number.replace("+", "")
-    if not clean_phone.startswith("91"):
-        clean_phone = "91" + clean_phone
+    clean_phone = _normalize_phone_e164(phone_number)
 
     logger.info(f"Preparing to send Ziper.io WhatsApp message to {clean_phone}...")
 
@@ -687,9 +713,7 @@ async def send_wabridge_whatsapp(phone_number, template_id=None):
     if not phone_number:
         return
 
-    clean_phone = phone_number.replace("+", "")
-    if not clean_phone.startswith("91"):
-        clean_phone = "91" + clean_phone
+    clean_phone = _normalize_phone_e164(phone_number)
 
     logger.info(f"Preparing to send WABridge template message to {clean_phone}...")
 
@@ -1247,7 +1271,9 @@ async def entrypoint(ctx: JobContext):
         # Extract phone number from LiveKit Participant Identity (format: "sip_+9174...")
         user_phone = None
         if participant_identity and "sip_" in participant_identity:
-            user_phone = participant_identity.replace("sip_", "").replace("+", "")
+            user_phone = _normalize_phone_e164(
+                participant_identity.replace("sip_", "")
+            )
 
         # 1. Generate Custom Summary (Logging ONLY, Telegram REMOVED)
         admin_summary_text = await generate_call_summary(
@@ -1293,24 +1319,8 @@ async def entrypoint(ctx: JobContext):
         # 3. Ziper.io: Send Summary to Admin
         await send_ziper_whatsapp(admin_phone, admin_summary_text)
 
-        # 3. WhatsApp Follow-ups (Ziper + WABridge)
+        # 3. WhatsApp Follow-ups (WABridge only for caller)
         if user_phone:
-            # Send Ziper Text Message
-            greeting_msg = """Hi! 😊 Thank you for your time on the call.
-
-You can check complete course details here:
-📄 https://www.expertinstitute.in/bookmycourse/
-
-To secure your seat, book here:
-💳 https://pages.razorpay.com/pl_GIkisCwDv60T3i/view
-
-🎯 Special Offer:
-If you book now with just ₹500, this amount will be adjusted in your course fees — so you can claim the offer without any risk.
-
-Reply here if you need any help or want to book a FREE demo class.
-📞 9718888700"""
-            await send_ziper_whatsapp(user_phone, greeting_msg)
-            
             # Send WABridge Video Template
             await send_wabridge_whatsapp(user_phone)
 

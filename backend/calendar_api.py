@@ -19,10 +19,14 @@ from livekit.agents.utils import http_context
 def _normalize_phone_number(phone_number: str) -> str:
     """
     Strictly normalizes to E.164. Ensuring the '+' prefix is always present.
+    Handles leading zero trunk prefix (e.g. 08652153375 -> +918652153375).
     """
     phone = str(phone_number).strip().replace(" ", "").replace("-", "")
     if phone.startswith("+"):
         return phone
+    # Strip leading 0 (Indian trunk prefix) before other checks
+    if phone.startswith("0"):
+        phone = phone[1:]
     # If it starts with 91 but no +, add +
     if phone.startswith("91") and len(phone) >= 12:
         return "+" + phone
