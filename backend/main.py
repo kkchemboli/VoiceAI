@@ -1,6 +1,6 @@
 import os
 import logging
-from fastapi import FastAPI, HTTPException, Body, UploadFile, File
+from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -1209,11 +1209,11 @@ async def update_config(config: ConfigUpdate):
 
 
 @app.get("/api/logs")
-async def get_logs():
-    """Fetch call logs"""
+async def get_logs(page: int = Query(1, ge=1), page_size: int = Query(100, ge=1, le=500)):
+    """Fetch call logs with pagination"""
     if not supabase:
         # RETURN MOCK DATA FOR TESTING
-        return [
+        mock = [
             {
                 "id": "mock-1",
                 "date": datetime.datetime.now().strftime("%Y-%m-%d"),
@@ -1237,12 +1237,16 @@ async def get_logs():
                 "transcript": "User: aapke yahan mobile repairing course hai? Agent: Haan bilkul, basic to advanced training milti hai..."
             }
         ]
+        return {"data": mock, "total": len(mock)}
 
     try:
+        start = (page - 1) * page_size
+        end = start + page_size - 1
         response = (
             supabase.table("call_logs")
-            .select("*")
+            .select("*", count="exact")
             .order("created_at", desc=True)
+            .range(start, end)
             .execute()
         )
         transformed = []
@@ -1263,10 +1267,10 @@ async def get_logs():
                     "transcript": log.get("transcript", ""),
                 }
             )
-        return transformed
+        return {"data": transformed, "total": response.count}
     except Exception as e:
         print(f"Error fetching logs: {e}")
-        return []
+        return {"data": [], "total": 0}
 
 
 @app.get("/api/appointments")

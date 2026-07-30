@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RefreshCw, FileText, X } from 'lucide-react';
+import { RefreshCw, FileText, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import './CallLogsView.css';
 
 interface CallLog {
@@ -17,10 +17,18 @@ interface CallLog {
 interface CallLogsViewProps {
   logs: CallLog[];
   onRefresh: () => void;
+  currentPage: number;
+  totalCalls: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
 }
 
-export const CallLogsView: React.FC<CallLogsViewProps> = ({ logs, onRefresh }) => {
+export const CallLogsView: React.FC<CallLogsViewProps> = ({ logs, onRefresh, currentPage, totalCalls, pageSize, onPageChange }) => {
   const [selectedLog, setSelectedLog] = useState<CallLog | null>(null);
+
+  const totalPages = Math.max(1, Math.ceil(totalCalls / pageSize));
+  const startItem = totalCalls === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const endItem = Math.min(currentPage * pageSize, totalCalls);
 
   return (
     <div className="main-container">
@@ -76,6 +84,33 @@ export const CallLogsView: React.FC<CallLogsViewProps> = ({ logs, onRefresh }) =
             </tbody>
           </table>
         </div>
+
+        {totalCalls > pageSize && (
+          <div className="pagination-bar">
+            <div className="pagination-info">
+              Showing {startItem}-{endItem} of {totalCalls}
+            </div>
+            <div className="pagination-controls">
+              <button
+                className="pagination-btn"
+                disabled={currentPage <= 1}
+                onClick={() => onPageChange(currentPage - 1)}
+              >
+                <ChevronLeft size={14} /> Previous
+              </button>
+              <span className="pagination-pages">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                className="pagination-btn"
+                disabled={currentPage >= totalPages}
+                onClick={() => onPageChange(currentPage + 1)}
+              >
+                Next <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {selectedLog && (

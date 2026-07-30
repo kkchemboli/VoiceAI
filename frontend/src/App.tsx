@@ -47,8 +47,27 @@ function App() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [liveCalls] = useState<any[]>([]); // Future implementation
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCalls, setTotalCalls] = useState(0);
+  const pageSize = 100;
+
+  const fetchLogs = async (page: number) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/logs?page=${page}&page_size=${pageSize}`);
+      const d = await res.json();
+      if (d.data.length === 0 && d.total > 0 && page > 1) {
+        setCurrentPage(1);
+        return;
+      }
+      setFullCallLogs(d.data);
+      setTotalCalls(d.total);
+    } catch (err) {
+      console.error("Failed to fetch call logs:", err);
+    }
+  };
 
   const refreshData = () => {
+    setCurrentPage(1);
     // Fetch Agent Config
     fetch(`${API_BASE}/api/config`)
       .then(res => res.json())
@@ -60,13 +79,7 @@ function App() {
       })
       .catch(err => console.error("Failed to fetch agent config:", err));
 
-    // Fetch Call Logs
-    fetch(`${API_BASE}/api/logs`)
-      .then(res => res.json())
-      .then(data => {
-        setFullCallLogs(data);
-      })
-      .catch(err => console.error("Failed to fetch call logs:", err));
+    fetchLogs(1);
   };
 
   // Fetch appointments for a specific month
@@ -93,6 +106,14 @@ useEffect(() => {
     fetchAppointments(currentMonth);
   }, [currentMonth]);
 
+  // Reset to page 1 when switching to logs view
+  useEffect(() => {
+    if (currentView === 'logs') {
+      setCurrentPage(1);
+      fetchLogs(1);
+    }
+  }, [currentView]);
+
   const saveAgentSettings = async () => {
     try {
       const response = await fetch(`${API_BASE}/api/config`, {
@@ -116,6 +137,11 @@ if (response.ok) {
       console.error("Error saving agent settings:", err);
       alert("Error saving agent settings.");
     }
+  };
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    fetchLogs(page);
   };
 
   useEffect(() => {
@@ -146,7 +172,7 @@ if (response.ok) {
         {currentView === 'dashboard' && (
           <DashboardView 
             filteredCalls={filteredCalls} 
-            totalCalls={fullCallLogs.length}
+            totalCalls={totalCalls}
             onRefresh={refreshData}
           />
         )}
@@ -159,7 +185,16 @@ if (response.ok) {
           />
         )}
 
-        {(currentView === 'logs') && <CallLogsView logs={fullCallLogs} onRefresh={refreshData} />}
+        {(currentView === 'logs') && (
+          <CallLogsView
+            logs={fullCallLogs}
+            onRefresh={refreshData}
+            currentPage={currentPage}
+            totalCalls={totalCalls}
+            pageSize={pageSize}
+            onPageChange={handlePageChange}
+          />
+        )}
 
         {(currentView === 'monitor') && <MonitorView liveCalls={liveCalls} />}
 
