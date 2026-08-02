@@ -197,6 +197,7 @@ _patch_sarvam_stream(sarvam.tts.ChunkedStream)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_LLM_MODEL = os.getenv("GROQ_LLM_MODEL", "openai/gpt-oss-120b")
 ZIPER_API_URL = os.getenv("ZIPER_API_URL")
 ZIPER_API_TOKEN = os.getenv("ZIPER_API_TOKEN")
 
@@ -1268,7 +1269,7 @@ async def generate_call_summary(chat_messages, user_phone=None, booking_info=Non
             try:
                 headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
                 payload = {
-                    "model": "llama-3.1-8b-instant",  # Using the faster/supported model
+                    "model": GROQ_LLM_MODEL,
                     "messages": [
                         {
                             "role": "system",
@@ -1755,7 +1756,7 @@ async def entrypoint(ctx: JobContext):
     # Component Initialization for Demo
     # Using gpt-oss-120b for enhanced capabilities.
     llm_node = groq.LLM(
-        model="openai/gpt-oss-120b", temperature=0.1
+        model=GROQ_LLM_MODEL, temperature=0.1
     )
     """llm_node = openai.LLM(model="gpt-5.4-nano", temperature=0.1)"""
     # Using Sarvam Saaras v3 for high-quality localized STT with auto-detection
