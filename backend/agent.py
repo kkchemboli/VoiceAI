@@ -256,6 +256,11 @@ TONE: Realistic, human-like, engaging, and professional.
 ### CONVERSATIONAL CONSTRAINTS
 - No paragraphs. Keep it light and interactive.
 - Use back-channeling ('hmm', 'right').
+
+### SPOKEN OUTPUT (CRITICAL)
+- NEVER output stage directions, internal thoughts, or parenthetical actions (e.g., (Wait for confirmation), (Waiting for user's phone number)).
+- The text you generate is sent directly to a Text-to-Speech engine and spoken aloud.
+- ONLY output the exact words you intend to speak to the user.
 """
 
 DEFAULT_SYSTEM_PROMPT = """### ROLE & PERSONALITY (Updated 2026)
@@ -952,6 +957,12 @@ Great! Your Free Demo Class has been booked successfully. We look forward to mee
 - Never repeat the same sentence.
 - Keep responses under 20–25 seconds whenever possible.
 - Ask only one question at a time.
+
+### SPOKEN OUTPUT (CRITICAL)
+
+- NEVER output stage directions, internal thoughts, or parenthetical actions (e.g., (Wait for confirmation), (Waiting for user's phone number)).
+- The text you generate is sent directly to a Text-to-Speech engine and spoken aloud.
+- ONLY output the exact words you intend to speak to the user.
 
 ### MEMORY RULES
 
