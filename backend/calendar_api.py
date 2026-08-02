@@ -270,7 +270,15 @@ class CalComCalendar(Calendar):
                     
                     if "not available" in message.lower() or "conflict" in message.lower():
                         return f"Error: This slot is no longer available. ({message})"
-                    
+
+                    if resp.status == 409:
+                        return (
+                            "Error: This user already has a Free Demo Class booking (409). "
+                            "The new booking was NOT created. Do NOT tell the user the booking "
+                            "succeeded. Tell the user they already have a booking and offer to "
+                            "connect them with the admissions/support team for any changes."
+                        )
+
                     return f"Error: Cal.com API returned {resp.status}. Message: {message}"
 
                 return "Appointment scheduled successfully."

@@ -1086,7 +1086,7 @@ async def fetch_agent_config_from_supabase():
 class ExpertInstituteAgent(Agent):
     LANGUAGE_CONFIG = {
         "hi": {"lang": "hi-IN", "speaker": "roopa", "pace": 1.05},
-        "en": {"lang": "en-IN", "speaker": "roopa", "pace": 1.05},
+        "en": {"lang": "hi-IN", "speaker": "roopa", "pace": 1.05},
     }
 
     def __init__(
@@ -1718,6 +1718,17 @@ async def entrypoint(ctx: JobContext):
         phone_number: str,
         name: str,
     ):
+        if not name or not name.strip():
+            return (
+                "Error: The user's name is missing. The booking was NOT created. "
+                "Ask the user for their full name first, then call schedule_demo_class again."
+            )
+        if not phone_number or not phone_number.strip():
+            return (
+                "Error: The user's phone number is missing. The booking was NOT created. "
+                "Ask the user for their phone number first, then call schedule_demo_class again."
+            )
+
         slot = _slots_map.get(selected_slot)
         if not slot:
             slot = _slots_normalized.get(_normalize_slot_key(selected_slot))
@@ -1767,7 +1778,7 @@ async def entrypoint(ctx: JobContext):
     )
 
     tts_node = sarvam.TTS(
-        target_language_code="en-IN",  # Initialized for English greeting
+        target_language_code="hi-IN",  # Handles Hinglish and pure Hindi output
         model="bulbul:v3",
         speaker="roopa",
         pace=1.05,
