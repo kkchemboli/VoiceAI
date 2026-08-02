@@ -1214,23 +1214,6 @@ class ExpertInstituteAgent(Agent):
                                     max_chunk_length=150,
                                 )
 
-                        # 2. Deterministic Discount/Transfer Trigger
-                        if "discount" in text or "reduce price" in text:
-                            logger.info(
-                                f"!!! Deterministic transfer triggered: {text} !!!"
-                            )
-                            try:
-                                if hasattr(self, "session") and self.session:
-                                    self.session.say(
-                                        "I'll transfer your call to our support team.",
-                                        allow_interruptions=False,
-                                    )
-                                asyncio.create_task(self._fnc_ctx.transfer_call())
-                            except Exception as e:
-                                logger.error(
-                                    f"Error during deterministic transfer: {e}"
-                                )
-
                 yield event
         except Exception as e:
             logger.error(f"Error in stt_node: {e}")
@@ -1682,29 +1665,33 @@ async def entrypoint(ctx: JobContext):
     )
     async def list_available_slots():
         now = datetime.datetime.now(tz_info)
-        range_days = 30
+        range_days = 7
+        start_time = now + datetime.timedelta(days=1)
         slots = await cal.list_available_slots(
-            start_time=now, end_time=now + datetime.timedelta(days=range_days)
+            start_time=start_time,
+            end_time=start_time + datetime.timedelta(days=range_days),
         )
 
         if not slots:
             return "No slots available at the moment."
 
-        # Group slots by date
+        # Group slots by date (chronological order)
         from collections import defaultdict
         day_map = defaultdict(list)
         for slot in slots:
             local = slot.start_time.astimezone(tz_info)
-            day_key = local.strftime("%A %d %B %Y")
+            day_key = local.date()
             time_str = local.strftime("%I:%M %p")
-            day_map[day_key].append((time_str, slot))
+            day_map[day_key].append((slot, time_str))
 
         parts = []
-        for day, times in sorted(day_map.items()):
-            time_list = ", ".join(t for t, _ in sorted(times))
-            parts.append(f"{day}: {time_list}.")
-            for time_str, slot in times:
-                key = f"{day} at {time_str}"
+        for day in sorted(day_map.keys()):
+            times = sorted(day_map[day], key=lambda item: item[0].start_time)
+            label = day.strftime("%A, %d %B %Y")
+            time_list = ", ".join(time_str for _, time_str in times)
+            parts.append(f"{label}: {time_list}.")
+            for slot, time_str in times:
+                key = f"{label} at {time_str}"
                 _slots_map[key] = slot
                 _slots_normalized[_normalize_slot_key(key)] = slot
 
@@ -1811,7 +1798,6 @@ async def entrypoint(ctx: JobContext):
     autocut_triggered = [False]
     agent_is_speaking = [False]
     user_is_speaking = [False]
-    user_requested_hangup = [False]
     summary_sent = [False]
 
     def reset_autocut_timer(reason: str = "activity"):
@@ -1823,14 +1809,13 @@ async def entrypoint(ctx: JobContext):
         return any(
             closing_line in normalized
             for closing_line in (
+                "thank you for contacting expert institute. have a wonderful day",
+                "expert institute से contact करने के लिए thank you",
+                "we look forward to meeting you in the free demo class",
                 "thank you for calling expert institute. goodbye",
                 "expert institute call करने के लिए धन्यवाद. goodbye",
             )
         )
-
-    def is_soft_closing_assistant_message(text: str) -> bool:
-        normalized = text.lower()
-        return "goodbye" in normalized or "good bye" in normalized or "bye" in normalized
 
     async def hang_up_call(reason: str):
         if autocut_triggered[0]:
@@ -1912,11 +1897,6 @@ async def entrypoint(ctx: JobContext):
             if is_closing_assistant_message(transcript):
                 logger.info("AUTOCUT: Exact assistant closing phrase detected.")
                 asyncio.create_task(close_after_assistant_closing())
-            
-            # 2. Fallback: User said 'bye' and agent responded with a soft closing
-            elif user_requested_hangup[0] and is_soft_closing_assistant_message(transcript):
-                logger.info("AUTOCUT: User requested hangup + soft assistant closing detected.")
-                asyncio.create_task(close_after_assistant_closing())
 
     @session.on("agent_state_changed")
     def on_agent_state_changed(event: AgentStateChangedEvent):
@@ -1945,9 +1925,6 @@ async def entrypoint(ctx: JobContext):
             print(f"\n👤 USER: {event.transcript}\n")
             logger.info(f"User (STT) said: {event.transcript}")
             user_is_speaking[0] = False
-            if re.search(r"\b(bye|goodbye|good bye|bas|bas itna hi|nahi|that is all|that's all)\b", event.transcript.lower()):
-                user_requested_hangup[0] = True
-                logger.info("AUTOCUT: user hangup intent detected.")
             reset_autocut_timer("user_input_transcribed event")
 
     @ctx.room.on("track_subscribed")
