@@ -1678,7 +1678,7 @@ async def entrypoint(ctx: JobContext):
     booking_info = {"booked": False, "name": "", "phone": "", "date": "", "time": ""}
 
     @llm.function_tool(
-        description="Get ALL available appointment slots for Free Demo Classes. Returns the complete list of slots grouped by day with available times. CRITICAL: Always call this first and present the ENTIRE list to the user (day, date, time only, no IDs) whenever they want to book a Free Demo Class. After showing the list, ask the user which slot they prefer and WAIT for their explicit choice. Do NOT collect name, phone number, or book anything until the user has selected a specific slot."
+        description="Get ALL available appointment slots for Free Demo Classes. Returns the complete list of slots grouped by day with available times. The return is formatted for speech: times on the same day are separated by commas, and each day ends with a full stop (period) so the voice pauses between dates. CRITICAL: Always call this first and present the ENTIRE list to the user (day, date, time only, no IDs) whenever they want to book a Free Demo Class, reading it exactly as returned with commas between times and full stops between dates (never use bullets, dashes, or markdown). After showing the list, ask the user which slot they prefer and WAIT for their explicit choice. Do NOT collect name, phone number, or book anything until the user has selected a specific slot."
     )
     async def list_available_slots():
         now = datetime.datetime.now(tz_info)
@@ -1699,16 +1699,16 @@ async def entrypoint(ctx: JobContext):
             time_str = local.strftime("%I:%M %p")
             day_map[day_key].append((time_str, slot))
 
-        lines = []
+        parts = []
         for day, times in sorted(day_map.items()):
             time_list = ", ".join(t for t, _ in sorted(times))
-            lines.append(f"{day}: {time_list}")
+            parts.append(f"{day}: {time_list}.")
             for time_str, slot in times:
                 key = f"{day} at {time_str}"
                 _slots_map[key] = slot
                 _slots_normalized[_normalize_slot_key(key)] = slot
 
-        return "\n".join(lines)
+        return " ".join(parts)
 
     @llm.function_tool(
         description="Schedule a Free Demo Class appointment. CRITICAL: Call this ONLY after the user has explicitly chosen a specific slot from the `list_available_slots` output. Never book a slot the user did not choose, never pick/default/guess a slot, and never call this before the user has selected a slot. `selected_slot` must be the exact date-and-time string the user chose from `list_available_slots`. Requires the user's confirmed name and phone number."
