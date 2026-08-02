@@ -67,6 +67,61 @@ def _format_date_human(local: datetime.datetime, now: datetime.datetime) -> str:
     return f"{date_str} at {local.strftime('%I:%M %p')}"
 
 
+def _normalize_slot_key(text: str) -> str:
+    """Canonicalize a slot reference so LLM phrasing variations still match.
+
+    Handles case, punctuation, ordinals, an optional year, an optional "at"
+    separator, and either day-first or month-first date ordering. All of the
+    following map to the same key:
+
+      "Sunday 02 August 2026 at 12:00 PM"
+      "Sunday, 02 August, 12:00 PM"
+      "sunday 02nd August 12:00 p.m."
+      "Sunday, August 2nd, 12:00 PM"
+    """
+    text = text.lower()
+    text = re.sub(r"[,\-–—/;.]+", " ", text)
+    text = re.sub(r"(\d)(st|nd|rd|th)\b", r"\1", text)
+    text = re.sub(r"\b\d{4}\b", "", text)  # drop the year
+    text = text.replace("a m", "am").replace("p m", "pm")
+
+    months = {
+        "january": 1, "february": 2, "march": 3, "april": 4, "may": 5,
+        "june": 6, "july": 7, "august": 8, "september": 9, "october": 10,
+        "november": 11, "december": 12,
+    }
+
+    def as_int(token: str):
+        try:
+            return int(token)
+        except ValueError:
+            return None
+
+    day = month = hour = minute = None
+    ampm = ""
+    tokens = text.split()
+    for token in tokens:
+        if month is None and token in months:
+            month = months[token]
+        elif day is None:
+            d = as_int(token)
+            if d is not None and d <= 31:
+                day = d
+        elif token in ("am", "pm"):
+            ampm = token
+    for token in tokens:
+        m = re.fullmatch(r"(\d{1,2}):(\d{2})", token)
+        if m:
+            hour = int(m.group(1))
+            minute = int(m.group(2))
+
+    if day is not None and month is not None and hour is not None and minute is not None:
+        return f"{month:02d}-{day:02d}-{hour:02d}-{minute:02d}-{ampm}"
+
+    text = re.sub(r"\b(at)\b", "", " ".join(tokens))
+    return re.sub(r"\s+", " ", text).strip()
+
+
 logger = logging.getLogger("voice-agent")
 
 # --- MONKEY PATCH FOR AUDIO PLAYBACK STABILITY ---
@@ -1403,8 +1458,8 @@ def prewarm(proc: JobProcess):
     print("DEBUG: PREWARM STARTED")
     try:
         proc.userdata["vad"] = silero.VAD.load(
-            activation_threshold=0.3,
-            min_speech_duration=0.1,
+            activation_threshold=0.5,
+            min_speech_duration=0.25,
             min_silence_duration=0.3,
             prefix_padding_duration=0.3,
         )
@@ -1530,6 +1585,16 @@ async def entrypoint(ctx: JobContext):
         
         system_prompt += f"\n\nCURRENT CONTEXT:\nYou are calling {recipient_name} specifically about the {target_course} course they inquired about."
 
+        system_prompt += (
+            "\n\nBOOKING VERIFICATION RULE (CRITICAL): NEVER confirm, promise, or commit to any "
+            "specific booking date or time with the user until you have called `list_available_slots` "
+            "and that exact day/time appears in its returned list. If the user requests a specific "
+            "time, call `list_available_slots` first, then tell them whether that exact time is "
+            "available, and only proceed after showing the actual available options. Never invent or "
+            "assume a slot is available, and never tell the user a slot is unavailable without seeing "
+            "it absent from the `list_available_slots` output."
+        )
+
         # 2. Greeting Fallback Logic
         db_outbound_greeting = agent_config.get("outbound_opening_greeting")
         if db_outbound_greeting and db_outbound_greeting.strip():
@@ -1608,6 +1673,7 @@ async def entrypoint(ctx: JobContext):
     await cal.initialize()
 
     _slots_map = {}
+    _slots_normalized = {}
     booking_info = {"booked": False, "name": "", "phone": "", "date": "", "time": ""}
 
     @llm.function_tool(
@@ -1637,7 +1703,9 @@ async def entrypoint(ctx: JobContext):
             time_list = ", ".join(t for t, _ in sorted(times))
             lines.append(f"{day}: {time_list}")
             for time_str, slot in times:
-                _slots_map[f"{day} at {time_str}"] = slot
+                key = f"{day} at {time_str}"
+                _slots_map[key] = slot
+                _slots_normalized[_normalize_slot_key(key)] = slot
 
         return "\n".join(lines)
 
@@ -1651,7 +1719,14 @@ async def entrypoint(ctx: JobContext):
     ):
         slot = _slots_map.get(selected_slot)
         if not slot:
-            return f"Error: Slot '{selected_slot}' not found. Please call list_available_slots again."
+            slot = _slots_normalized.get(_normalize_slot_key(selected_slot))
+        if not slot:
+            return (
+                f"Error: Slot '{selected_slot}' was not found among the available slots. "
+                "This does not mean the slot is unavailable. Call list_available_slots to get the "
+                "current available slots, then ask the user to choose from the exact options listed, "
+                "and pass the chosen option to schedule_demo_class exactly as returned."
+            )
 
         try:
             result = await cal.schedule_appointment(
@@ -1797,8 +1872,8 @@ async def entrypoint(ctx: JobContext):
         tts=tts_node,
         tools=fnc_ctx.flatten() + [list_available_slots, schedule_demo_class],
         turn_handling={
-            "endpointing": {"min_delay": 0.4},
-            "interruption": {"min_duration": 0.3},
+            "endpointing": {"min_delay": 0.6},
+            "interruption": {"min_duration": 0.5},
             "preemptive_generation": {"enabled": False},
         },
     )
@@ -1894,8 +1969,6 @@ async def entrypoint(ctx: JobContext):
         greeting_text = DEFAULT_GREETING
 
     logger.info(f"Using greeting: {greeting_text}")
-
-    session.history.add_message(role="assistant", content=[greeting_text])
 
     try:
         if is_outbound:
