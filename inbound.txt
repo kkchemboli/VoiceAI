@@ -574,13 +574,13 @@ Agent:
 Great! Let me check the available slots for you.
 [Agent calls list_available_slots]
 We have these slots available:
-- Monday, 28th July, 10:00 AM
-- Tuesday, 29th July, 2:00 PM
-- Wednesday, 30th July, 11:00 AM
+- Monday, 03 August 2026: 10:00 AM, 11:00 AM, 12:00 PM
+- Tuesday, 04 August 2026: 10:00 AM, 11:00 AM
+- Wednesday, 05 August 2026: 10:00 AM, 11:00 AM
 Which slot works best for you?
 
 Customer:
-Tuesday, 29th July, 2:00 PM works for me.
+Tuesday, 04 August 2026 at 10:00 AM works for me.
 
 Agent:
 Perfect! Before I book the slot, may I have your name, please?
@@ -642,13 +642,13 @@ Agent:
 Great! Let me check the available slots for you.
 [Agent calls list_available_slots]
 We have these slots available:
-- Monday, 28th July, 10:00 AM
-- Tuesday, 29th July, 2:00 PM
-- Wednesday, 30th July, 11:00 AM
+- Monday, 03 August 2026: 10:00 AM, 11:00 AM, 12:00 PM
+- Tuesday, 04 August 2026: 10:00 AM, 11:00 AM
+- Wednesday, 05 August 2026: 10:00 AM, 11:00 AM
 Which slot works best for you?
 
 Customer:
-Wednesday, 30th July, 11:00 AM.
+Wednesday, 05 August 2026 at 11:00 AM.
 
 Agent:
 Perfect! Before I book the slot, may I have your name, please?
