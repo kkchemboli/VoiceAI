@@ -1677,7 +1677,8 @@ async def entrypoint(ctx: JobContext):
     async def list_available_slots():
         now = datetime.datetime.now(tz_info)
         range_days = 7
-        start_time = now + datetime.timedelta(days=1)
+        tomorrow = now + datetime.timedelta(days=1)
+        start_time = tomorrow.replace(hour=0, minute=0, second=0, microsecond=0)
         slots = await cal.list_available_slots(
             start_time=start_time,
             end_time=start_time + datetime.timedelta(days=range_days),
