@@ -14,50 +14,22 @@ The agent's persona is a warm, professional female representative who speaks nat
 
 ## Features
 
-- **📞 Real phone calls** over SIP via **Vobiz** and **LiveKit Cloud** — both inbound and outbound.
-- **🎙 Natural bilingual voice** — **Sarvam AI** for speech-to-text (`saaras:v3`) and text-to-speech (`bulbul:v3`) with automatic language locking between English and Hinglish.
-- **🧠 Conversational LLM** — **Groq** (`gpt-oss-120b`) drives the conversation with low latency.
-- **📚 RAG knowledge base** — OpenAI embeddings + FAISS index over `knowledge.txt`, `knowledge_hi.txt`, PDFs, and live Google Sheets. The agent only answers from the knowledge context — it never guesses.
-- **🗓 Demo-class booking** — live **Cal.com** integration with real-time slot availability, slot confirmation, name/phone collection, and duplicate-booking protection (with a `FakeCalendar` fallback for local testing).
-- **🤝 Human call transfer** — LLM-triggered SIP transfer to a support manager (`transfer_functions.py`).
-- **🚀 Outbound campaign dialer** — bulk dial from a Google Sheet via **Supabase** queue + **Celery/Redis** cron (respects an 8 AM–8 PM IST calling window).
-- **💬 WhatsApp follow-ups** — call summaries to the admin via **Ziper.io** and template messages to the caller via **WABridge**.
-- **⏹ Smart autocut** — auto-ends calls after 60s of user inactivity or on the closing phrase.
-- **📊 Admin dashboard** — a React + Vite frontend to monitor call logs, bookings, edit agent prompts, manage the knowledge base, and trigger outbound calls.
+- **Real phone calls** over SIP via **Vobiz** and **LiveKit Cloud** — both inbound and outbound.
+- **Natural bilingual voice** — **Sarvam AI** for speech-to-text (`saaras:v3`) and text-to-speech (`bulbul:v3`) with automatic language locking between English and Hinglish.
+- **Conversational LLM** — **Groq** (`gpt-oss-120b`) drives the conversation with low latency.
+- **RAG knowledge base** — OpenAI embeddings + FAISS index over `knowledge.txt`, `knowledge_hi.txt`, PDFs, and live Google Sheets. The agent only answers from the knowledge context — it never guesses.
+- **Demo-class booking** — live **Cal.com** integration with real-time slot availability, slot confirmation, name/phone collection, and duplicate-booking protection.
+- **Human call transfer** — LLM-triggered SIP transfer to a support manager (`transfer_functions.py`).
+- **Outbound campaign dialer** — bulk dial from a Google Sheet via **Supabase** queue + **Celery/Redis** cron (respects an 8 AM–8 PM IST calling window).
+- **WhatsApp follow-ups** — call summaries to the admin via **Ziper.io** and template messages to the caller via **WABridge**.
+- **Smart autocut** — auto-ends calls after 60s of user inactivity or on the closing phrase.
+- **Admin dashboard** — a React + Vite frontend to monitor call logs, bookings, edit agent prompts, manage the knowledge base, and trigger outbound calls.
 
 ---
 
 ## Architecture
 
-```
-                         ┌──────────────────────────────────────────────┐
-  Inbound caller         │           LiveKit Cloud / SIP                │
- ───────────▶  Vobiz SIP ──▶  Inbound trunk  ──▶  Room (audio only)     │
-                            └──────────────────────┬───────────────────┘
-                                                   │
-          ┌────────────────────────────────────────▼───────────────────────────┐
-          │                          agent.py (worker)                         │
-          │   LiveKit Agents session ─────────────────────────────────────────  │
-          │      ├─ STT: Sarvam saaras:v3 (Hinglish codemix)                    │
-          │      ├─ LLM: Groq gpt-oss-120b  ◀── RAGEngine (FAISS + OpenAI)      │
-          │      ├─ TTS: Sarvam bulbul:v3 (speaker "roopa")                     │
-          │      └─ Tools: list_available_slots · schedule_demo_class           │
-          │              transfer_call (SIP transfer to human)                  │
-          └──────┬───────────────┬────────────────┬─────────────────────────────┘
-                 │               │                │
-        ┌────────▼──────┐ ┌──────▼───────┐ ┌──────▼─────────┐
-        │  Cal.com      │ │  Supabase    │ │  WhatsApp      │
-        │  bookings     │ │  config · KB  │ │  Ziper / WABridge
-        └───────────────┘ │  logs · queue │ └────────────────┘
-                          └──────┬────────┘
-                                 │
-        ┌────────────────────────▼─────────────────────────┐
-        │  main.py (FastAPI) ─ serves /api/* + dashboard     │
-        │  frontend/dist (React dashboard)                   │
-        └────────────────────────────────────────────────────┘
-
-        Outbound campaigns:  Google Sheet ─▶ Celery beat ─▶ queue ─▶ vobiz_outbound.py ─▶ LiveKit dispatch
-```
+![Architecture](VoiceAI%20-%20InboundOutbound-2026-08-15-183440.png)
 
 ---
 
@@ -72,7 +44,7 @@ The agent's persona is a warm, professional female representative who speaks nat
 | RAG | OpenAI `text-embedding-3-small` + FAISS (`faiss-cpu`) |
 | Backend API | FastAPI + Uvicorn |
 | Database / Queue store | [Supabase](https://supabase.com/) (Postgres + REST) |
-| Calendar | [Cal.com](https://cal.com/) API v2 (fallback: `FakeCalendar`) |
+| Calendar | [Cal.com](https://cal.com/) API v2 |
 | Job queue / cron | Celery + Redis (outbound campaign window) |
 | Telephony | Vobiz SIP trunk → LiveKit SIP participant |
 | Frontend | React 18 + Vite + TypeScript |
@@ -91,7 +63,7 @@ Expert_Ai/
 │   ├── main.py                # FastAPI app — dashboard/API endpoints, static frontend
 │   ├── rag_engine.py          # Chunking, embedding, FAISS index, retrieval
 │   ├── transfer_functions.py  # LiveKit SIP call transfer tool
-│   ├── calendar_api.py        # Cal.com / FakeCalendar slot & booking abstraction
+│   ├── calendar_api.py        # Cal.com slot & booking abstraction
 │   ├── vobiz_outbound.py      # Initiate outbound SIP calls via LiveKit dispatch
 │   ├── bulk_dialer.py         # Bulk dialer — loads a Google Sheet into the queue
 │   ├── celery_worker.py       # Celery beat — processes outbound queue (IST window)
@@ -139,23 +111,23 @@ cp backend/.env.example backend/.env
 
 Then fill in `backend/.env`:
 
-| Variable | Required | Description |
-|---|---|---|
-| `LIVEKIT_URL` | ✅ | LiveKit Cloud WebSocket URL |
-| `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | ✅ | LiveKit Cloud API credentials |
-| `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` | for outbound | Vobiz/LiveKit outbound SIP trunk |
-| `GROQ_API_KEY` | ✅ | Groq API key (`GROQ_LLM_MODEL` defaults to `openai/gpt-oss-120b`) |
-| `SARVAM_API_KEY` | ✅ | Sarvam STT/TTS key |
-| `OPENAI_API_KEY` | for RAG | Embeddings for the knowledge base |
-| `SUPABASE_URL` / `SUPABASE_KEY` | ✅ | Config, knowledge base, call logs, outbound queue |
-| `CAL_API_KEY` / `CAL_EVENT_ID` | for live booking | Cal.com API v2 (falls back to `FakeCalendar`) |
-| `DEFAULT_TRANSFER_NUMBER` | for transfers | Number to transfer calls to |
-| `GOOGLE_SHEET_URL` | for bulk dialing | Published-as-CSV Google Sheet of leads |
-| `ZIPER_ACCESS_TOKEN` / `ZIPER_INSTANCE_ID` | optional | WhatsApp summaries to admin |
-| `WABRIDGE_*` | optional | WhatsApp template follow-ups |
-| `CORS_ALLOWED_ORIGINS` | optional | Comma-separated frontend origins |
+| Variable | Description |
+|---|---|
+| `LIVEKIT_URL` | LiveKit Cloud WebSocket URL |
+| `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | LiveKit Cloud API credentials |
+| `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` | Vobiz/LiveKit outbound SIP trunk |
+| `GROQ_API_KEY` | Groq API key (`GROQ_LLM_MODEL` defaults to `openai/gpt-oss-120b`) |
+| `SARVAM_API_KEY` | Sarvam STT/TTS key |
+| `OPENAI_API_KEY` | Embeddings for the knowledge base |
+| `SUPABASE_URL` / `SUPABASE_KEY` | Config, knowledge base, call logs, outbound queue |
+| `CAL_API_KEY` / `CAL_EVENT_ID` | Cal.com API v2 |
+| `DEFAULT_TRANSFER_NUMBER` | Number to transfer calls to |
+| `GOOGLE_SHEET_URL` | Published-as-CSV Google Sheet of leads |
+| `ZIPER_ACCESS_TOKEN` / `ZIPER_INSTANCE_ID` | WhatsApp summaries to admin |
+| `WABRIDGE_*` | WhatsApp template follow-ups |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated frontend origins |
 
-> **⚠️ Never commit `.env`.** It is git-ignored and holds secrets.
+> **Never commit `.env`.** It is git-ignored and holds secrets.
 
 ### 3. Run the frontend dashboard
 
