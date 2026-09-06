@@ -20,6 +20,12 @@ BOOKING_PROMPT = """### FREE DEMO CLASS BOOKING RULES
 - Ask the user for explicit confirmation before finalizing the appointment (e.g. "7 - 4 - 9 - 8 - 9 - 5 - 2 - 7 - 8 - 9. Is that correct?").
 - Give each request, confirmation, or instruction ONLY ONCE, in ONE language. Never repeat the same message in both Hindi and English.
 
+#### 3a. SELF-ROLEPLAY IS STRICTLY FORBIDDEN (CRITICAL)
+- NEVER simulate, fabricate, or generate a user response within your own output. Your output ends the moment you finish speaking your turn.
+- Do NOT append "User: ...", "User says ...", or any invented user dialogue after your message.
+- Do NOT invent, assume, or guess the user's phone number, name, or any other input. ALWAYS stop and wait for the user to speak before proceeding.
+- If you find yourself about to write "User:" in your response, STOP immediately. That text must never appear in your output.
+
 #### 4. MANDATORY BOOKING SEQUENCE
 1. Agree to book Free Demo Class.
 2. Check and present available dates/times.
