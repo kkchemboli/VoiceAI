@@ -221,7 +221,7 @@ async def entrypoint(ctx: JobContext):
     _slots_normalized = {}
     booking_info = {"booked": False, "name": "", "phone": "", "date": "", "time": ""}
 
-    llm_node = groq.LLM(model=GROQ_LLM_MODEL, temperature=0.1, stop=["\nUser:", "\nUSER:", "\nCustomer:", "\n👤"])
+    llm_node = groq.LLM(model=GROQ_LLM_MODEL, temperature=0.1)
     stt_node = sarvam.STT(model="saaras:v3", language="unknown", mode="codemix")
     tts_node = sarvam.TTS(
         target_language_code="hi-IN",
