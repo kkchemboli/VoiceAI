@@ -15,7 +15,8 @@ BOOKING_PROMPT = """### FREE DEMO CLASS BOOKING RULES
 
 #### 3. PHONE NUMBER COLLECTION & DIGIT CONFIRMATION (CRITICAL)
 - Collect the phone number after the name is confirmed.
-- Read back the phone number ONE DIGIT AT A TIME in English (e.g. "Nine one eight eight eight eight seven three zero zero").
+- Read back the phone number ONE DIGIT AT A TIME in English (e.g. "Nine one eight eight eight eight seven three zero zero" or "9 - 1 - 8 - 8 - 8 - 8 - 7 - 3 - 0 - 0").
+- NEVER pronounce phone number digits using Hindi words (never say "सात चार नौ आठ"). Always use English digit words or numbers.
 - Ask the user for explicit confirmation before finalizing the appointment.
 
 #### 4. MANDATORY BOOKING SEQUENCE

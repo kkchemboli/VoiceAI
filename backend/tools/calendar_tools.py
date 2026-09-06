@@ -3,7 +3,7 @@ import logging
 from collections import defaultdict
 from livekit.agents import llm
 from utils.formatting import _format_date_human
-from utils.normalizers import _normalize_slot_key
+from utils.normalizers import _normalize_slot_key, _normalize_phone_e164
 
 logger = logging.getLogger("voice-agent")
 
@@ -76,6 +76,15 @@ def create_calendar_tools(
                 "Ask the user for their phone number first, then call schedule_demo_class again."
             )
 
+        clean_phone = _normalize_phone_e164(phone_number)
+        if not clean_phone or len(clean_phone) < 10:
+            return (
+                f"Error: Phone number '{phone_number}' is invalid. Exactly 10 digits are required. "
+                "Ask the user for their complete 10-digit mobile number."
+            )
+
+        formatted_phone = "+" + clean_phone if not clean_phone.startswith("+") else clean_phone
+
         slot = slots_map.get(selected_slot)
         if not slot:
             slot = slots_normalized.get(_normalize_slot_key(selected_slot))
@@ -91,7 +100,7 @@ def create_calendar_tools(
             result = await cal.schedule_appointment(
                 start_time=slot.start_time,
                 attendee_name=name,
-                phone_number=phone_number,
+                phone_number=formatted_phone,
             )
             if result.startswith("Error"):
                 return result

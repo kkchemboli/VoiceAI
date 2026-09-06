@@ -53,6 +53,66 @@ def _normalize_slot_key(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def extract_digits_from_spoken_text(text: str) -> str:
+    """Extract raw digits from spoken text, handling English digit words, Hindi digit words,
+
+    'double'/'triple' modifiers, and numeric characters.
+    """
+    if not text:
+        return ""
+
+    lower = text.lower()
+    word_to_digit = {
+        "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4",
+        "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9",
+        "शून्य": "0", "एक": "1", "दो": "2", "तीन": "3", "चार": "4",
+        "पाँच": "5", "पांच": "5", "छह": "6", "छः": "6", "सात": "7",
+        "आठ": "8", "नौ": "9", "नो": "9",
+    }
+
+    # Split into raw tokens and strip ASCII punctuation for Unicode safety (e.g. Hindi words with matras)
+    raw_tokens = lower.split()
+    tokens = []
+    punctuation = ".,!?:;\"'()[]{}-/\\"
+    for t in raw_tokens:
+        cleaned = t.strip(punctuation)
+        if cleaned:
+            tokens.append(cleaned)
+
+    digits = []
+    multiplier = 1
+
+    for token in tokens:
+        if token == "double":
+            multiplier = 2
+            continue
+        elif token == "triple":
+            multiplier = 3
+            continue
+
+        if token.isdigit():
+            for char in token:
+                digits.append(char * multiplier)
+                multiplier = 1
+        elif token in word_to_digit:
+            d = word_to_digit[token]
+            digits.append(d * multiplier)
+            multiplier = 1
+        else:
+            multiplier = 1
+
+    return "".join(digits)
+
+
+def format_digits_english(digits: str) -> str:
+    """Format a string of digits into English digit names separated by spaces for speech confirmation."""
+    digit_words = {
+        "0": "zero", "1": "one", "2": "two", "3": "three", "4": "four",
+        "5": "five", "6": "six", "7": "seven", "8": "eight", "9": "nine",
+    }
+    return " ".join(digit_words.get(d, d) for d in digits if d.isdigit())
+
+
 def _normalize_phone_e164(phone_str):
     """
     Normalize an Indian phone number to E.164-like format without '+'.
@@ -74,8 +134,9 @@ def _normalize_phone_e164(phone_str):
     if clean.startswith("91") and len(clean) == 12:
         return clean
 
-    if len(clean) == 10 and clean[0] in "6789":
+    if len(clean) == 10 and clean[0] in "56789":
         return "91" + clean
 
     logger.warning(f"Could not normalize phone number: {phone_str} -> {clean}")
     return clean
+
