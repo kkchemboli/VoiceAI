@@ -22,7 +22,7 @@ from livekit.agents.voice.events import (
     AgentStateChangedEvent,
     ConversationItemAddedEvent,
 )
-import livekit.plugins.groq as groq
+import livekit.plugins.openai as openai
 import livekit.plugins.sarvam as sarvam
 import livekit.plugins.silero as silero
 from livekit import rtc
@@ -47,7 +47,7 @@ apply_audio_patches()
 
 logger = logging.getLogger("voice-agent")
 
-GROQ_LLM_MODEL = os.getenv("GROQ_LLM_MODEL", "openai/gpt-oss-120b")
+OPENAI_LLM_MODEL = os.getenv("OPENAI_LLM_MODEL", "gpt-4.1-mini")
 
 
 def is_legacy_prompt(prompt_text: Optional[str]) -> bool:
@@ -221,7 +221,7 @@ async def entrypoint(ctx: JobContext):
     _slots_normalized = {}
     booking_info = {"booked": False, "name": "", "phone": "", "date": "", "time": ""}
 
-    llm_node = groq.LLM(model=GROQ_LLM_MODEL, temperature=0.1)
+    llm_node = openai.LLM(model=OPENAI_LLM_MODEL, temperature=0.1)
     stt_node = sarvam.STT(model="saaras:v3", language="unknown", mode="codemix")
     tts_node = sarvam.TTS(
         target_language_code="hi-IN",
