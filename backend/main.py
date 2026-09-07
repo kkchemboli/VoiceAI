@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from contextlib import asynccontextmanager
 from supabase import create_client, Client
 from dotenv import load_dotenv
@@ -30,10 +30,12 @@ load_dotenv()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Initialize services
+    app.state.startup_complete = False
     logger.info("Initializing backend services...")
     try:
         if hasattr(calendar_service, 'initialize'):
             await calendar_service.initialize()
+        app.state.startup_complete = True
         logger.info("Services initialized successfully.")
     except Exception as e:
         logger.error(f"Failed to initialize services: {e}")
@@ -46,6 +48,28 @@ async def lifespan(app: FastAPI):
     logger.info("Shutdown complete.")
 
 app = FastAPI(title="Voice Agent API", lifespan=lifespan)
+
+
+@app.get("/health/live")
+async def liveness_check():
+    """Confirm that the API process is running and able to serve requests."""
+    return {"status": "ok"}
+
+
+@app.get("/health/ready")
+async def readiness_check():
+    """Report whether startup dependencies have completed initialization."""
+    startup_complete = getattr(app.state, "startup_complete", False)
+    payload = {
+        "status": "ready" if startup_complete else "not_ready",
+        "dependencies": {
+            "calendar": "initialized" if startup_complete else "initializing",
+            "supabase": "configured" if SUPABASE_URL and SUPABASE_KEY else "optional_or_unconfigured",
+        },
+    }
+    if not startup_complete:
+        return JSONResponse(status_code=503, content=payload)
+    return payload
 
 # Enable CORS for frontend development
 cors_origins = os.getenv(
