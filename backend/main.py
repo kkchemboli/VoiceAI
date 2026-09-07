@@ -13,6 +13,7 @@ import datetime
 import asyncio
 from services.calendar_api import Calendar, FakeCalendar, CalComCalendar
 from services.vobiz_outbound import make_outbound_call
+from core.config import settings
 import sys
 import json
 
@@ -72,9 +73,7 @@ async def readiness_check():
     return payload
 
 # Enable CORS for frontend development
-cors_origins = os.getenv(
-    "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000"
-).split(",")
+cors_origins = list(settings.cors_allowed_origins)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
@@ -84,8 +83,8 @@ app.add_middleware(
 )
 
 # Supabase Setup
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_URL = settings.supabase_url
+SUPABASE_KEY = settings.supabase_key
 
 supabase: Optional[Client] = None
 if SUPABASE_URL and SUPABASE_KEY:
@@ -96,8 +95,8 @@ if SUPABASE_URL and SUPABASE_KEY:
         print(f"Failed to connect to Supabase: {e}")
 
 # Calendar Service Setup
-timezone = "Asia/Kolkata"
-cal_api_key = os.getenv("CAL_API_KEY")
+timezone = settings.timezone
+cal_api_key = settings.cal_api_key
 
 from prompts import (
     DEFAULT_GREETING,
@@ -110,13 +109,8 @@ DEFAULT_OUTBOUND_GREETING = "Hi, am I speaking with [Name]?"
 DEFAULT_OUTBOUND_PROMPT = OUTBOUND_SYSTEM_PROMPT
 
 
-cal_api_key = os.getenv("CAL_API_KEY")
-cal_event_id = os.getenv("CAL_EVENT_ID")
-if cal_event_id:
-    try:
-        cal_event_id = int(cal_event_id)
-    except ValueError:
-        cal_event_id = None
+cal_api_key = settings.cal_api_key
+cal_event_id = settings.cal_event_id
 
 if cal_api_key:
     calendar_service = CalComCalendar(

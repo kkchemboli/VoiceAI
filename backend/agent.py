@@ -26,6 +26,7 @@ import livekit.plugins.openai as openai
 import livekit.plugins.sarvam as sarvam
 import livekit.plugins.silero as silero
 from livekit import rtc
+from core.config import settings
 
 # Core, Prompts, Services, Tools, Utils Imports
 from core.patches import apply_audio_patches
@@ -47,7 +48,7 @@ apply_audio_patches()
 
 logger = logging.getLogger("voice-agent")
 
-OPENAI_LLM_MODEL = os.getenv("OPENAI_LLM_MODEL", "gpt-4.1-mini")
+OPENAI_LLM_MODEL = settings.openai_llm_model
 
 
 def is_legacy_prompt(prompt_text: Optional[str]) -> bool:
@@ -92,7 +93,7 @@ async def entrypoint(ctx: JobContext):
         call_start_time = datetime.datetime.now()
 
         # RAG Initialization
-        openai_api_key = os.getenv("OPENAI_API_KEY")
+        openai_api_key = settings.openai_api_key
         if openai_api_key and "rag" not in ctx.proc.userdata:
             try:
                 rag = RAGEngine(openai_api_key=openai_api_key)
@@ -421,11 +422,12 @@ async def entrypoint(ctx: JobContext):
 
 if __name__ == "__main__":
     required_env = [
-        "LIVEKIT_URL",
-        "LIVEKIT_API_KEY",
-        "LIVEKIT_API_SECRET",
-        "OPENAI_API_KEY",
+        "LIVEKIT_URL" if not settings.livekit_url else None,
+        "LIVEKIT_API_KEY" if not settings.livekit_api_key else None,
+        "LIVEKIT_API_SECRET" if not settings.livekit_api_secret else None,
+        "OPENAI_API_KEY" if not settings.openai_api_key else None,
     ]
+    required_env = [name for name in required_env if name]
     missing_env = [name for name in required_env if not os.getenv(name)]
     if missing_env:
         missing_text = ", ".join(missing_env)

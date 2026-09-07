@@ -8,13 +8,14 @@ from dotenv import load_dotenv
 
 from services.vobiz_outbound import make_outbound_call
 from supabase import create_client
+from core.config import settings
 
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("celery-worker")
 
-redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+redis_url = settings.redis_url
 app = Celery("campaign_worker", broker=redis_url)
 app.conf.update(
     task_track_started=True,
@@ -32,8 +33,8 @@ app.conf.beat_schedule = {
 }
 app.conf.timezone = 'UTC'
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_URL = settings.supabase_url
+SUPABASE_KEY = settings.supabase_key
 
 supabase = None
 if SUPABASE_URL and SUPABASE_KEY:
