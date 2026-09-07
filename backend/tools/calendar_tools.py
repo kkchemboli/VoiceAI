@@ -19,19 +19,18 @@ def create_calendar_tools(
     """Factory function creating scoped LLM function tools for calendar slot query and booking."""
 
     @llm.function_tool(
-        description="Get ALL available appointment slots for Free Demo Classes. Returns the complete list of slots grouped by day with available times. The return is formatted for speech: times on the same day are separated by commas, and each day ends with a full stop (period) so the voice pauses between dates. CRITICAL: Always call this first and present the ENTIRE list to the user (day, date, time only, no IDs) whenever they want to book a Free Demo Class, reading it exactly as returned with commas between times and full stops between dates (never use bullets, dashes, or markdown). After showing the list, ask the user which slot they prefer and WAIT for their explicit choice. Do NOT collect name, phone number, or book anything until the user has selected a specific slot."
+        description="Get all available appointment slots for Free Demo Classes tomorrow only. Returns the complete list of tomorrow's available times. The return is formatted for speech: times are separated by commas. CRITICAL: Always call this first and present the ENTIRE list to the user (day, date, time only, no IDs) whenever they want to book a Free Demo Class, reading it exactly as returned with commas between times (never use bullets, dashes, or markdown). After showing the list, ask the user which slot they prefer and WAIT for their explicit choice. Do NOT collect name, phone number, or book anything until the user has selected a specific slot."
     )
     async def list_available_slots():
         if agent_state and hasattr(agent_state, "update_booking_stage"):
             agent_state.update_booking_stage("SLOT_SELECTION")
 
         now = datetime.datetime.now(tz_info)
-        range_days = 7
         tomorrow = now + datetime.timedelta(days=1)
         start_time = tomorrow.replace(hour=0, minute=0, second=0, microsecond=0)
         slots = await cal.list_available_slots(
             start_time=start_time,
-            end_time=start_time + datetime.timedelta(days=range_days),
+            end_time=start_time + datetime.timedelta(days=1),
         )
 
         if not slots:
@@ -129,4 +128,3 @@ def create_calendar_tools(
         return f"Success: The appointment was scheduled for {_format_date_human(local, now)}."
 
     return [list_available_slots, schedule_demo_class]
-
