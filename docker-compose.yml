@@ -5,6 +5,10 @@ services:
       dockerfile: Dockerfile.backend
       target: api
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       SUPABASE_URL: ${SUPABASE_URL:-}
       SUPABASE_KEY: ${SUPABASE_KEY:-}
@@ -33,6 +37,10 @@ services:
       dockerfile: Dockerfile.backend
       target: voice-agent
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       LIVEKIT_URL: ${LIVEKIT_URL:-}
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
@@ -59,6 +67,10 @@ services:
       dockerfile: Dockerfile.backend
       target: celery-worker
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       REDIS_URL: redis://redis:6379/0
       SUPABASE_URL: ${SUPABASE_URL:-}
@@ -80,6 +92,10 @@ services:
       dockerfile: Dockerfile.backend
       target: celery-beat
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       REDIS_URL: redis://redis:6379/0
       SUPABASE_URL: ${SUPABASE_URL:-}
@@ -93,6 +109,10 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis-data:/data
@@ -110,15 +130,19 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
-      - "8080:80"
+      - "8080:8080"
     depends_on:
       api:
         condition: service_healthy
     networks:
       - backend
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
       interval: 15s
       timeout: 5s
       retries: 5
