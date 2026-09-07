@@ -9,11 +9,13 @@ from dotenv import load_dotenv
 from services.vobiz_outbound import make_outbound_call
 from supabase import create_client
 from core.config import settings
+from core.observability import configure_logging, configure_otel, metrics
 
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("celery-worker")
+configure_logging("celery-worker")
+configure_otel("celery-worker")
 
 redis_url = settings.redis_url
 app = Celery("campaign_worker", broker=redis_url)
@@ -47,6 +49,7 @@ if SUPABASE_URL and SUPABASE_KEY:
 @app.task(bind=True)
 def process_campaign_queue(self):
     logger.info("Cron triggered: Checking Campaign Queue (task_id=%s)...", self.request.id)
+    metrics.increment("celery_tasks_started_total")
     
     ist = pytz.timezone('Asia/Kolkata')
     now_ist = datetime.datetime.now(ist)

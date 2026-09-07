@@ -1,6 +1,7 @@
 import os
 import logging
-from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Query
+import time
+from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
@@ -12,17 +13,23 @@ from typing import List, Optional
 import datetime
 import asyncio
 from services.calendar_api import Calendar, FakeCalendar, CalComCalendar
-from services.vobiz_outbound import make_outbound_call
+from services.celery_worker import app as celery_app
 from core.config import settings
+from core.observability import (
+    configure_logging,
+    configure_otel,
+    metrics,
+    new_correlation_id,
+    observe_request,
+    request_id_context,
+    service_context,
+    trace_id_context,
+)
 import sys
 import json
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler()]
-)
+configure_logging("api")
+configure_otel("api")
 logger = logging.getLogger("voice-backend")
 
 # Load environment variables
@@ -51,6 +58,32 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Voice Agent API", lifespan=lifespan)
 
 
+@app.middleware("http")
+async def request_observability(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID") or new_correlation_id()
+    trace_id = request.headers.get("X-Trace-ID") or request_id
+    request_token = request_id_context.set(request_id)
+    trace_token = trace_id_context.set(trace_id)
+    service_token = service_context.set("api")
+    started = time.perf_counter()
+    response = None
+    try:
+        response = await call_next(request)
+        return response
+    except Exception:
+        metrics.increment("http_requests_5xx_total")
+        raise
+    finally:
+        duration_ms = (time.perf_counter() - started) * 1000
+        if response is not None:
+            observe_request(request.method, request.url.path, response.status_code, duration_ms)
+            response.headers["X-Request-ID"] = request_id
+            response.headers["X-Trace-ID"] = trace_id
+        request_id_context.reset(request_token)
+        trace_id_context.reset(trace_token)
+        service_context.reset(service_token)
+
+
 @app.get("/health/live")
 async def liveness_check():
     """Confirm that the API process is running and able to serve requests."""
@@ -71,6 +104,12 @@ async def readiness_check():
     if not startup_complete:
         return JSONResponse(status_code=503, content=payload)
     return payload
+
+
+@app.get("/metrics")
+async def metrics_check():
+    """Return process-local counters for the deployment metrics collector."""
+    return {"service": "api", "metrics": metrics.snapshot()}
 
 # Enable CORS for frontend development
 cors_origins = list(settings.cors_allowed_origins)

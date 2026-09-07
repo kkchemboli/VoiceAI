@@ -17,6 +17,7 @@ services:
       GOOGLE_SHEET_URL: ${GOOGLE_SHEET_URL:-}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:8080}
       REDIS_URL: redis://redis:6379/0
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     expose:
       - "8000"
     depends_on:
@@ -58,6 +59,7 @@ services:
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       GROQ_LLM_MODEL: ${GROQ_LLM_MODEL:-}
       GOOGLE_SHEET_URL: ${GOOGLE_SHEET_URL:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     networks:
       - backend
 
@@ -80,6 +82,7 @@ services:
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
       LIVEKIT_SIP_OUTBOUND_TRUNK_ID: ${LIVEKIT_SIP_OUTBOUND_TRUNK_ID:-}
       LIVEKIT_SIP_ROOM: ${LIVEKIT_SIP_ROOM:-outbound-call}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     depends_on:
       redis:
         condition: service_healthy
@@ -100,6 +103,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       SUPABASE_URL: ${SUPABASE_URL:-}
       SUPABASE_KEY: ${SUPABASE_KEY:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     depends_on:
       redis:
         condition: service_healthy
@@ -148,8 +152,38 @@ services:
       retries: 5
       start_period: 5s
 
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.131.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    depends_on:
+      loki:
+        condition: service_started
+      jaeger:
+        condition: service_started
+    networks:
+      - backend
+
+  loki:
+    image: grafana/loki:3.5.0
+    command: ["-config.file=/etc/loki/config.yaml"]
+    volumes:
+      - ./loki-config.yaml:/etc/loki/config.yaml:ro
+      - loki-data:/loki
+    networks:
+      - backend
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.69.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    networks:
+      - backend
+
 volumes:
   redis-data:
+  loki-data:
 
 networks:
   backend:

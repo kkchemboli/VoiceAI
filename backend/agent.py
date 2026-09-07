@@ -27,6 +27,7 @@ import livekit.plugins.sarvam as sarvam
 import livekit.plugins.silero as silero
 from livekit import rtc
 from core.config import settings
+from core.observability import configure_logging, configure_otel, metrics
 
 # Core, Prompts, Services, Tools, Utils Imports
 from core.patches import apply_audio_patches
@@ -47,6 +48,8 @@ from utils import _normalize_phone_e164
 apply_audio_patches()
 
 logger = logging.getLogger("voice-agent")
+configure_logging("voice-agent")
+configure_otel("voice-agent")
 
 OPENAI_LLM_MODEL = settings.openai_llm_model
 
@@ -439,6 +442,7 @@ if __name__ == "__main__":
         "Starting voice-agent service with model=%s; service is ready for independent scaling.",
         OPENAI_LLM_MODEL,
     )
+    metrics.increment("voice_agent_starts_total")
 
     cli.run_app(
         WorkerOptions(
