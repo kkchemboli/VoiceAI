@@ -1,0 +1,94 @@
+version: 1
+
+services:
+  api:
+    protocol: http
+    listen: 8000
+    public_entrypoint: frontend
+    health:
+      liveness: GET /health/live
+      readiness: GET /health/ready
+    endpoint_groups:
+      outbound:
+        - POST /api/outbound/call
+        - POST /api/outbound/batch
+        - POST /api/outbound/bulk-dial
+        - GET /api/outbound/queue
+      booking:
+        - GET /api/appointments
+      configuration:
+        - GET /api/config
+        - POST /api/config
+      knowledge:
+        - GET /api/knowledge
+        - POST /api/knowledge/{language}
+        - GET /api/knowledge/status
+      call_logs:
+        - GET /api/logs
+    rules:
+      - Validate request bodies at the API boundary.
+      - Persist durable outbound-call state before publishing asynchronous work.
+      - Return a stable error body with a detail field for failed requests.
+      - Do not execute long-running outbound calls inside the API process.
+
+  voice-agent:
+    protocol: livekit-worker
+    agent_name: outbound_caller
+    model: OPENAI_LLM_MODEL
+    default_model: gpt-4.1-mini
+    required_runtime_config:
+      - LIVEKIT_URL
+      - LIVEKIT_API_KEY
+      - LIVEKIT_API_SECRET
+      - OPENAI_API_KEY
+
+  celery-worker:
+    protocol: redis-celery
+    broker: REDIS_URL
+    tasks:
+      - name: services.celery_worker.process_campaign_queue
+        schedule_owner: celery-beat
+        idempotency_key: outbound_calls.id
+        durable_status_field: outbound_calls.status
+        allowed_statuses:
+          - pending
+          - calling
+          - success
+          - failed
+        retry_policy:
+          acknowledge_after_execution: true
+          reject_on_worker_loss: true
+          prefetch_multiplier: 1
+
+  celery-beat:
+    protocol: redis-celery
+    broker: REDIS_URL
+    singleton: true
+    schedules:
+      - task: services.celery_worker.process_campaign_queue
+        interval_seconds: 60
+
+  redis:
+    protocol: redis
+    address: redis:6379
+    purpose:
+      - Celery broker
+      - Short-lived coordination and cache state
+    not_source_of_truth_for:
+      - bookings
+      - call_logs
+      - agent_configuration
+      - uploaded_files
+
+identifiers:
+  request_id: HTTP request correlation
+  trace_id: distributed operation correlation
+  call_id: voice call correlation
+  booking_id: booking workflow correlation
+  task_id: Celery task correlation
+
+timeouts:
+  api_request_seconds: 30
+  redis_connect_seconds: 5
+  external_service_seconds: 30
+  graceful_shutdown_seconds: 30
