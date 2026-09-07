@@ -96,3 +96,60 @@ def process_campaign_queue(self):
                 supabase.table("outbound_calls").update({"status": "failed", "error_message": str(e)}).eq("id", call_id).execute()
             except Exception as update_err:
                 logger.error(f"Failed to update status to 'failed': {update_err}")
+
+
+@app.task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    max_retries=3,
+)
+def process_outbound_call(self, call_id: str):
+    """Claim and execute one durable outbound call exactly once per status transition."""
+    if not supabase:
+        raise RuntimeError("Supabase client is not initialized")
+
+    response = supabase.table("outbound_calls").select("*").eq("id", call_id).limit(1).execute()
+    if not response.data:
+        logger.warning("Outbound call record not found (call_id=%s)", call_id)
+        return {"status": "missing", "call_id": call_id}
+
+    record = response.data[0]
+    if record.get("status") != "pending":
+        logger.info(
+            "Skipping outbound call that is no longer pending (call_id=%s, status=%s)",
+            call_id,
+            record.get("status"),
+        )
+        return {"status": "skipped", "call_id": call_id}
+
+    claimed = (
+        supabase.table("outbound_calls")
+        .update({"status": "calling"})
+        .eq("id", call_id)
+        .eq("status", "pending")
+        .execute()
+    )
+    if not claimed.data:
+        logger.info("Outbound call was claimed by another worker (call_id=%s)", call_id)
+        return {"status": "skipped", "call_id": call_id}
+
+    try:
+        asyncio.run(
+            make_outbound_call(
+                record["phone_number"],
+                record.get("name", "Student"),
+                record.get("course", "our training programs"),
+                wait_for_completion=True,
+            )
+        )
+        supabase.table("outbound_calls").update({"status": "success"}).eq("id", call_id).execute()
+        logger.info("Outbound call completed (call_id=%s, task_id=%s)", call_id, self.request.id)
+        return {"status": "success", "call_id": call_id}
+    except Exception as error:
+        supabase.table("outbound_calls").update(
+            {"status": "failed", "error_message": str(error)}
+        ).eq("id", call_id).execute()
+        logger.exception("Outbound call failed (call_id=%s, task_id=%s)", call_id, self.request.id)
+        raise

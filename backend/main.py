@@ -184,96 +184,45 @@ class SheetUrlUpdate(BaseModel):
     url: str
 
 
-async def managed_outbound_call(phone: str, call_id: Optional[str] = None):
-    """
-    Initiates a call and updates the status in Supabase if available.
-    """
-    status = "success"
-    error = None
-    
-    try:
-        await make_outbound_call(phone)
-    except Exception as e:
-        status = "failed"
-        error = str(e)
-        print(f"Call failed for {phone}: {e}")
-
-    if supabase and call_id:
-        try:
-            supabase.table("outbound_calls").update({
-                "status": status,
-                "error_message": error
-            }).eq("id", call_id).execute()
-        except Exception as e:
-            print(f"Failed to update outbound status in Supabase: {e}")
-
-# In-memory fallback queue (only used if Supabase is disconnected)
-outbound_queue = []
-
-
 @app.post("/api/outbound/call")
 async def trigger_outbound_call(request: CallRequest):
-    """Trigger a single outbound call"""
-    call_record_id = None
+    """Persist and enqueue a single outbound call."""
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Supabase is required for queued outbound calls")
     try:
-        if supabase:
-            # Create persistent record in Supabase
-            response = supabase.table("outbound_calls").insert({
-                "phone_number": request.phone_number,
-                "status": "calling"
-            }).execute()
-            if response.data:
-                call_record_id = response.data[0]["id"]
-        else:
-            # Fallback to in-memory queue
-            call_id = len(outbound_queue) + 1
-            outbound_queue.append({
-                "id": str(call_id),
-                "phone": request.phone_number,
-                "status": "calling",
-                "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
-            })
-        
-        # Initiate call in background
-        asyncio.create_task(managed_outbound_call(request.phone_number, call_record_id))
-        
-        return {"success": True, "message": f"Call to {request.phone_number} initiated"}
+        response = supabase.table("outbound_calls").insert({
+            "phone_number": request.phone_number,
+            "status": "pending",
+        }).execute()
+        call_record_id = response.data[0]["id"]
+        task = celery_app.send_task(
+            "services.celery_worker.process_outbound_call",
+            args=[call_record_id],
+        )
+        return {"success": True, "call_id": call_record_id, "task_id": task.id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/outbound/batch")
 async def trigger_batch_calls(request: BatchCallRequest):
-    """Trigger multiple outbound calls"""
+    """Persist and enqueue multiple outbound calls."""
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Supabase is required for queued outbound calls")
     try:
+        task_ids = []
         for phone in request.phone_numbers:
-            call_record_id = None
-            if supabase:
-                # Create persistent record
-                response = supabase.table("outbound_calls").insert({
-                    "phone_number": phone,
-                    "status": "pending"
-                }).execute()
-                if response.data:
-                    call_record_id = response.data[0]["id"]
-            else:
-                # Fallback to in-memory
-                call_id = len(outbound_queue) + 1
-                outbound_queue.append({
-                    "id": str(call_id),
-                    "phone": phone,
-                    "status": "pending",
-                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
-                })
-
-            # Throttle and trigger
-            async def delayed_call(p, rid):
-                await asyncio.sleep(2)
-                await managed_outbound_call(p, rid)
-            
-            asyncio.create_task(delayed_call(phone, call_record_id))
-
-        return {"success": True, "message": f"Started {len(request.phone_numbers)} calls"}
+            response = supabase.table("outbound_calls").insert({
+                "phone_number": phone,
+                "status": "pending",
+            }).execute()
+            call_record_id = response.data[0]["id"]
+            task = celery_app.send_task(
+                "services.celery_worker.process_outbound_call",
+                args=[call_record_id],
+            )
+            task_ids.append(task.id)
+        return {"success": True, "task_ids": task_ids, "count": len(task_ids)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

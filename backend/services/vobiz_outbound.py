@@ -20,9 +20,10 @@ async def make_outbound_call(destination_number, recipient_name="Student", targe
     room_name = os.getenv("LIVEKIT_SIP_ROOM", "outbound-call-room")
 
     if not all([url, api_key, api_secret, trunk_id]):
-        print("Error: Missing LiveKit SIP configuration in .env")
-        print("Please ensure LIVEKIT_SIP_OUTBOUND_TRUNK_ID is set.")
-        return
+        raise RuntimeError(
+            "Missing LiveKit SIP configuration; set LIVEKIT_URL, LIVEKIT_API_KEY, "
+            "LIVEKIT_API_SECRET, and LIVEKIT_SIP_OUTBOUND_TRUNK_ID."
+        )
 
     destination_number = destination_number.strip().replace(" ", "").replace("-", "")
     
@@ -89,6 +90,7 @@ async def make_outbound_call(destination_number, recipient_name="Student", targe
         import traceback
         print(f"Error initiating call: {e}")
         traceback.print_exc()
+        raise
     finally:
         await lkapi.aclose()
 
