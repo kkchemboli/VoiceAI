@@ -31,6 +31,10 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 # Voice runtime: LiveKit worker only.
 FROM backend-base AS voice-agent
+ENV SERVICE_NAME=voice-agent
+STOPSIGNAL SIGTERM
+# The worker has no HTTP listener; liveness is supplied by the orchestrator
+# using the process/worker heartbeat rather than an API health endpoint.
 CMD ["python", "agent.py", "start"]
 
 # Celery runtime: use the worker command by default. Beat is deployed from

@@ -420,13 +420,23 @@ async def entrypoint(ctx: JobContext):
 
 
 if __name__ == "__main__":
-    required_env = ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"]
+    required_env = [
+        "LIVEKIT_URL",
+        "LIVEKIT_API_KEY",
+        "LIVEKIT_API_SECRET",
+        "OPENAI_API_KEY",
+    ]
     missing_env = [name for name in required_env if not os.getenv(name)]
     if missing_env:
         missing_text = ", ".join(missing_env)
         raise RuntimeError(
-            f"Missing required LiveKit environment variables: {missing_text}. Set them in your deployment environment before starting the agent."
+            f"Missing required voice-agent environment variables: {missing_text}. Set them in your deployment environment before starting the agent."
         )
+
+    logger.info(
+        "Starting voice-agent service with model=%s; service is ready for independent scaling.",
+        OPENAI_LLM_MODEL,
+    )
 
     cli.run_app(
         WorkerOptions(
