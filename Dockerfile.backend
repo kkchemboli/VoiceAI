@@ -37,7 +37,19 @@ STOPSIGNAL SIGTERM
 # using the process/worker heartbeat rather than an API health endpoint.
 CMD ["python", "agent.py", "start"]
 
-# Celery runtime: use the worker command by default. Beat is deployed from
-# this same target with a command override in the orchestrator.
-FROM backend-base AS celery
+# Celery worker runtime: asynchronous task execution only.
+FROM backend-base AS celery-worker
+ENV SERVICE_NAME=celery-worker
+STOPSIGNAL SIGTERM
 CMD ["celery", "-A", "services.celery_worker.app", "worker", "--loglevel=info"]
+
+# Celery beat runtime: periodic schedule dispatch only. Run exactly one
+# instance unless a distributed scheduler is introduced.
+FROM backend-base AS celery-beat
+ENV SERVICE_NAME=celery-beat
+STOPSIGNAL SIGTERM
+CMD ["celery", "-A", "services.celery_worker.app", "beat", "--loglevel=info"]
+
+# Compatibility target for callers that still use --target celery. New
+# deployments should select celery-worker or celery-beat explicitly.
+FROM celery-worker AS celery

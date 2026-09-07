@@ -16,6 +16,13 @@ logger = logging.getLogger("celery-worker")
 
 redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 app = Celery("campaign_worker", broker=redis_url)
+app.conf.update(
+    task_track_started=True,
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    worker_prefetch_multiplier=1,
+    broker_connection_retry_on_startup=True,
+)
 
 app.conf.beat_schedule = {
     'process-campaign-queue-every-minute': {
@@ -36,9 +43,9 @@ if SUPABASE_URL and SUPABASE_KEY:
         logger.error(f"Failed to connect to Supabase: {e}")
 
 
-@app.task
-def process_campaign_queue():
-    logger.info("Cron triggered: Checking Campaign Queue...")
+@app.task(bind=True)
+def process_campaign_queue(self):
+    logger.info("Cron triggered: Checking Campaign Queue (task_id=%s)...", self.request.id)
     
     ist = pytz.timezone('Asia/Kolkata')
     now_ist = datetime.datetime.now(ist)
