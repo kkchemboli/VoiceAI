@@ -1,0 +1,9 @@
+Project rules
+
+- Keep container runtime boundaries explicit: api, voice-agent, celery-worker, celery-beat, redis, and frontend are separate deployable services.
+- Keep the existing all-in-one Dockerfile available until the container migration is complete and rollback is no longer required.
+- Do not add Supervisor or Redis to the standalone application images.
+- The API must not own long-running outbound-call execution; queue that work for Celery.
+- Keep secrets in runtime environment configuration, never in images or source control.
+- Markdown files under docs/ are working design notes and must not be included in implementation commits unless explicitly requested.
+- Leave llogs.txt untracked and do not include it in commits.

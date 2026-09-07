@@ -1,0 +1,37 @@
+# Shared backend image foundation.
+# Build a runtime with one of the targets below:
+#   docker build -f Dockerfile.backend --target api -t expert-inst-api .
+#   docker build -f Dockerfile.backend --target voice-agent -t expert-inst-voice-agent .
+#   docker build -f Dockerfile.backend --target celery -t expert-inst-celery .
+
+FROM python:3.12-slim AS backend-base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    TZ=Asia/Kolkata
+
+# libgomp1 is required by native ML/runtime dependencies used by the backend.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app/backend
+
+COPY backend/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY backend/ ./
+
+# API runtime: HTTP control plane only.
+FROM backend-base AS api
+EXPOSE 8000
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# Voice runtime: LiveKit worker only.
+FROM backend-base AS voice-agent
+CMD ["python", "agent.py", "start"]
+
+# Celery runtime: use the worker command by default. Beat is deployed from
+# this same target with a command override in the orchestrator.
+FROM backend-base AS celery
+CMD ["celery", "-A", "services.celery_worker.app", "worker", "--loglevel=info"]
