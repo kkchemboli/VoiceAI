@@ -207,6 +207,7 @@ services:
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set}
+      GF_SERVER_ROOT_URL: ${GF_SERVER_ROOT_URL:-http://localhost:3000}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
     volumes:
@@ -220,8 +221,8 @@ services:
         condition: service_started
       jaeger:
         condition: service_started
-    expose:
-      - "3000"
+    ports:
+      - "3000:3000"
     networks:
       - backend
     healthcheck:
