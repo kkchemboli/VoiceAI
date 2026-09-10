@@ -13,6 +13,7 @@ from typing import Any
 request_id_context: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
 trace_id_context: contextvars.ContextVar[str] = contextvars.ContextVar("trace_id", default="-")
 service_context: contextvars.ContextVar[str] = contextvars.ContextVar("service", default="unknown")
+otel_meter = None
 
 
 class JsonFormatter(logging.Formatter):
@@ -50,10 +51,20 @@ class Metrics:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._counters: dict[str, int] = {}
+        self._otel_counters: dict[str, Any] = {}
 
     def increment(self, name: str, amount: int = 1) -> None:
         with self._lock:
             self._counters[name] = self._counters.get(name, 0) + amount
+            if otel_meter is not None:
+                counter = self._otel_counters.get(name)
+                if counter is None:
+                    counter = otel_meter.create_counter(
+                        name,
+                        description=f"Count of {name}",
+                    )
+                    self._otel_counters[name] = counter
+                counter.add(amount)
 
     def snapshot(self) -> dict[str, int]:
         with self._lock:
@@ -96,7 +107,9 @@ def configure_otel(service_name: str) -> None:
                 )
             ],
         )
+        global otel_meter
         otel_metrics.set_meter_provider(meter_provider)
+        otel_meter = otel_metrics.get_meter(service_name)
 
         logger_provider = LoggerProvider(resource=resource)
         logger_provider.add_log_record_processor(
