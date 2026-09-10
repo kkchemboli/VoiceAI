@@ -61,8 +61,8 @@ async def run_bulk_dialer():
     sheet_url = os.getenv("GOOGLE_SHEET_URL")
     if not sheet_url:
         logger.error("GOOGLE_SHEET_URL not found in .env file!")
-        print("\n!!! ERROR: GOOGLE_SHEET_URL is missing !!!")
-        print("Please publish your Google Sheet as CSV and add the link to .env")
+        logger.error("GOOGLE_SHEET_URL is missing")
+        logger.error("Publish the Google Sheet as CSV and add the link to the runtime environment")
         return
 
     logger.info("Fetching student list from Google Sheet...")
@@ -110,8 +110,7 @@ async def run_bulk_dialer():
             continue
 
         prompt = f"Dialing {name} ({phone}) for course: {course}..."
-        print(f"\n[BULK] {prompt}")
-        logger.info(prompt)
+        logger.info("Bulk dialer prompt generated", extra={"prompt": prompt})
 
         call_record_id = None
         status = "failed"
@@ -162,9 +161,9 @@ async def run_bulk_dialer():
 
             await asyncio.sleep(2)
 
-    print(f"\n✅ COMPLETED: Successfully dispatched {count} calls from the sheet.")
+    logger.info("Bulk calls dispatched", extra={"count": count})
     if failed_count > 0:
-        print(f"⚠️  {failed_count} calls failed. Check logs for details.")
+        logger.warning("Bulk calls failed", extra={"failed_count": failed_count})
 
 
 if __name__ == "__main__":

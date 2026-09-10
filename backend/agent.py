@@ -71,7 +71,7 @@ def is_legacy_prompt(prompt_text: Optional[str]) -> bool:
 
 
 def prewarm(proc: JobProcess):
-    print("DEBUG: PREWARM STARTED")
+    logger.debug("Prewarm started")
     try:
         proc.userdata["vad"] = silero.VAD.load(
             activation_threshold=0.5,
@@ -79,19 +79,19 @@ def prewarm(proc: JobProcess):
             min_silence_duration=0.3,
             prefix_padding_duration=0.3,
         )
-        print("DEBUG: SILERO VAD LOADED SUCCESSFULLY (Optimized for SIP)")
+        logger.info("Silero VAD loaded successfully")
     except Exception as e:
-        print(f"DEBUG: SILERO VAD LOAD FAILED: {e}")
+        logger.exception("Silero VAD load failed")
     pass
 
 
 async def entrypoint(ctx: JobContext):
-    print(f"!!! CRITICAL: JOB ASSIGNED TO WORKER !!! Room: {ctx.room.name}")
-    print(f"DEBUG: ENTRYPOINT STARTED for room {ctx.room.name}")
+    logger.info("Job assigned to voice worker", extra={"room_name": ctx.room.name})
+    logger.debug("Voice entrypoint started", extra={"room_name": ctx.room.name})
     try:
         logger.info(f"Connecting to room {ctx.room.name}")
         await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-        print("DEBUG: CONNECTED TO ROOM SUCCESS")
+        logger.info("Connected to LiveKit room", extra={"room_name": ctx.room.name})
 
         call_start_time = datetime.datetime.now()
 
@@ -126,11 +126,11 @@ async def entrypoint(ctx: JobContext):
                         logger.error(f"RAG: Failed to load Google Sheet ({e}), continuing without it.")
 
                 ctx.proc.userdata["rag"] = rag
-                print("DEBUG: UNIVERSAL RAG ENGINE LOADED SUCCESSFULLY (PDF + TXT + SHEETS)")
+                logger.info("Knowledge engine loaded successfully")
             except Exception as e:
                 logger.error(f"RAG: Initialization failed: {type(e).__name__}: {e}")
     except Exception as e:
-        print(f"DEBUG: CONNECTION FAILED: {e}")
+        logger.exception("Voice connection failed")
         return
 
     agent_config = await fetch_agent_config_from_supabase()
@@ -296,7 +296,7 @@ async def entrypoint(ctx: JobContext):
         from livekit.agents.llm.chat_context import ChatMessage
         if isinstance(event.item, ChatMessage) and event.item.role == "assistant":
             transcript = " ".join(c for c in event.item.content if isinstance(c, str))
-            print(f"\n🤖 AGENT: {transcript}\n")
+            logger.info("Agent transcript received", extra={"transcript": transcript})
             logger.info(f"Agent (LLM) says: {transcript}")
             agent_is_speaking[0] = False
             reset_autocut_timer("assistant response finished")
@@ -327,8 +327,7 @@ async def entrypoint(ctx: JobContext):
     @session.on("user_input_transcribed")
     def on_user_input_transcribed(event: UserInputTranscribedEvent):
         if event.is_final:
-            print(f"\n👤 USER: {event.transcript}\n")
-            logger.info(f"User (STT) said: {event.transcript}")
+            logger.info("User transcript received")
             user_is_speaking[0] = False
             reset_autocut_timer("user_input_transcribed event")
 
@@ -337,7 +336,7 @@ async def entrypoint(ctx: JobContext):
         if track.kind == rtc.TrackKind.KIND_AUDIO:
             logger.info(f"Successfully SUBSCRIBED to audio track from {participant.identity}")
 
-    print("DEBUG: WAITING FOR USER TO ANSWER...")
+    logger.debug("Waiting for user to answer")
     participant_identity = None
     try:
         participant = await asyncio.wait_for(ctx.wait_for_participant(), timeout=30)
@@ -347,7 +346,7 @@ async def entrypoint(ctx: JobContext):
         logger.warning("No answer detected within 30s.")
 
     await session.start(agent, room=ctx.room)
-    print("DEBUG: SESSION STARTED. PREPARING GREETING...")
+    logger.info("Voice session started; preparing greeting")
 
     if not greeting_text or greeting_text == DEFAULT_GREETING:
         greeting_text = DEFAULT_GREETING

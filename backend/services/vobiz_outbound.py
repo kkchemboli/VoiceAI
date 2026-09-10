@@ -3,8 +3,11 @@ import os
 import sys
 import uuid
 import json
+import logging
 from dotenv import load_dotenv
 from livekit import api
+
+logger = logging.getLogger("outbound-call")
 
 load_dotenv()
 
@@ -28,7 +31,7 @@ async def make_outbound_call(destination_number, recipient_name="Student", targe
     destination_number = destination_number.strip().replace(" ", "").replace("-", "")
     
     if len(destination_number) == 10 and destination_number.isdigit():
-        print("Smart Formatting: Detected 10-digit number, assuming India (+91)")
+        logger.info("Smart formatting applied for 10-digit destination")
         destination_number = '+91' + destination_number
     elif not destination_number.startswith('+'):
         destination_number = '+' + destination_number
@@ -38,8 +41,7 @@ async def make_outbound_call(destination_number, recipient_name="Student", targe
 
     lkapi = api.LiveKitAPI(url, api_key, api_secret)
 
-    print(f"Dialing {destination_number} for {recipient_name} regarding {target_course}...")
-    print(f"Unique Room: {room_name}")
+    logger.info("Dialing outbound destination", extra={"room_name": room_name})
 
     metadata = json.dumps({
         "recipientName": recipient_name,
@@ -47,7 +49,7 @@ async def make_outbound_call(destination_number, recipient_name="Student", targe
     })
 
     try:
-        print("Dispatching agent 'outbound_caller' with metadata...")
+        logger.info("Dispatching outbound agent")
         dispatch = await lkapi.agent_dispatch.create_dispatch(
             api.CreateAgentDispatchRequest(
                 agent_name="outbound_caller",
@@ -55,9 +57,9 @@ async def make_outbound_call(destination_number, recipient_name="Student", targe
                 metadata=metadata
             )
         )
-        print(f"Agent dispatched successfully! Dispatch ID: {dispatch.id}")
+        logger.info("Agent dispatched successfully", extra={"dispatch_id": dispatch.id})
 
-        print(f"Initiating SIP call to {destination_number}...")
+        logger.info("Initiating SIP call", extra={"room_name": room_name})
         participant = await lkapi.sip.create_sip_participant(
             api.CreateSIPParticipantRequest(
                 room_name=room_name,
@@ -67,29 +69,28 @@ async def make_outbound_call(destination_number, recipient_name="Student", targe
                 participant_name=recipient_name
             )
         )
-        print(f"Call initiated! SIP Call ID: {participant.sip_call_id}")
+        logger.info("Call initiated", extra={"sip_call_id": participant.sip_call_id})
 
         if wait_for_completion:
-            print(f"Monitoring call to {recipient_name}... Waiting for hang-up.")
+            logger.info("Monitoring call until hang-up", extra={"room_name": room_name})
             await asyncio.sleep(5)
             
             while True:
                 participants = await lkapi.room.list_participants(api.ListParticipantsRequest(room=room_name))
                 if not participants.participants:
-                    print(f"Call with {recipient_name} has ended (Room empty).")
+                    logger.info("Call ended because room is empty", extra={"room_name": room_name})
                     break
                 
                 active_humans = [p for p in participants.participants if p.identity.startswith("sip_")]
                 if not active_humans:
-                    print(f"Student {recipient_name} has hung up. Cleaning up...")
+                    logger.info("Participant hung up", extra={"room_name": room_name})
                     break
                     
                 await asyncio.sleep(5)
 
     except Exception as e:
         import traceback
-        print(f"Error initiating call: {e}")
-        traceback.print_exc()
+        logger.exception("Error initiating outbound call")
         raise
     finally:
         await lkapi.aclose()
@@ -97,8 +98,8 @@ async def make_outbound_call(destination_number, recipient_name="Student", targe
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python vobiz_outbound.py <phone_number> [name] [course]")
-        print("Example: python vobiz_outbound.py 8591454670 \"Aman\" \"Mobile Repairing\"")
+        logger.error("Usage: python vobiz_outbound.py <phone_number> [name] [course]")
+        logger.error("Example: python vobiz_outbound.py 8591454670 \"Aman\" \"Mobile Repairing\"")
         sys.exit(1)
         
     target_num = sys.argv[1]

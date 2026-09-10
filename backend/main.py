@@ -136,9 +136,9 @@ supabase: Optional[Client] = None
 if SUPABASE_URL and SUPABASE_KEY:
     try:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-        print("Connected to Supabase")
+        logger.info("Connected to Supabase")
     except Exception as e:
-        print(f"Failed to connect to Supabase: {e}")
+        logger.exception("Failed to connect to Supabase")
 
 # Calendar Service Setup
 timezone = settings.timezone
@@ -251,7 +251,7 @@ async def get_outbound_queue():
                 })
             return transformed
         except Exception as e:
-            print(f"Error fetching outbound queue from Supabase: {e}")
+            logger.exception("Error fetching outbound queue from Supabase")
             return outbound_queue[-20:]
 
     # Fallback to in-memory queue
@@ -384,7 +384,7 @@ async def get_config():
 
         return config
     except Exception as e:
-        print(f"Error fetching config: {e}")
+        logger.exception("Error fetching config")
         config["error"] = str(e)
         return config
 
@@ -475,7 +475,7 @@ async def get_logs(page: int = Query(1, ge=1), page_size: int = Query(100, ge=1,
             )
         return {"data": transformed, "total": response.count}
     except Exception as e:
-        print(f"Error fetching logs: {e}")
+        logger.exception("Error fetching logs")
         return {"data": [], "total": 0}
 
 
@@ -569,7 +569,7 @@ async def get_knowledge(lang: str = "en"):
                 
         return {"content": ""}
     except Exception as e:
-        print(f"Error fetching knowledge: {e}")
+        logger.exception("Error fetching knowledge")
         return {"content": "", "error": str(e)}
 
 
