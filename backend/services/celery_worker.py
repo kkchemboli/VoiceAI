@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from services.vobiz_outbound import make_outbound_call
 from supabase import create_client
 from core.config import settings
-from core.observability import configure_logging, configure_otel, metrics
+from core.observability import configure_logging, configure_otel, metrics, start_span
 
 load_dotenv()
 
@@ -136,14 +136,20 @@ def process_outbound_call(self, call_id: str):
         return {"status": "skipped", "call_id": call_id}
 
     try:
-        asyncio.run(
-            make_outbound_call(
-                record["phone_number"],
-                record.get("name", "Student"),
-                record.get("course", "our training programs"),
-                wait_for_completion=True,
+        with start_span(
+            "celery.process_outbound_call",
+            {"celery.task_id": self.request.id, "call.id": call_id},
+        ) as span:
+            asyncio.run(
+                make_outbound_call(
+                    record["phone_number"],
+                    record.get("name", "Student"),
+                    record.get("course", "our training programs"),
+                    wait_for_completion=True,
+                )
             )
-        )
+            if span is not None:
+                span.set_attribute("celery.task.status", "success")
         supabase.table("outbound_calls").update({"status": "success"}).eq("id", call_id).execute()
         logger.info("Outbound call completed (call_id=%s, task_id=%s)", call_id, self.request.id)
         return {"status": "success", "call_id": call_id}

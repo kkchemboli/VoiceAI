@@ -23,6 +23,7 @@ from core.observability import (
     observe_request,
     request_id_context,
     service_context,
+    start_span,
     trace_id_context,
 )
 import sys
@@ -68,7 +69,13 @@ async def request_observability(request: Request, call_next):
     started = time.perf_counter()
     response = None
     try:
-        response = await call_next(request)
+        with start_span(
+            "http.request",
+            {"http.request.method": request.method, "url.path": request.url.path},
+        ) as span:
+            response = await call_next(request)
+            if span is not None:
+                span.set_attribute("http.response.status_code", response.status_code)
         return response
     except Exception:
         metrics.increment("http_requests_5xx_total")

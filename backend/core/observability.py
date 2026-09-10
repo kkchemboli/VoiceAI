@@ -7,6 +7,7 @@ import os
 import sys
 import threading
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any
 
@@ -130,6 +131,22 @@ def configure_otel(service_name: str) -> None:
 
 def new_correlation_id() -> str:
     return uuid.uuid4().hex
+
+
+@contextmanager
+def start_span(name: str, attributes: dict[str, Any] | None = None):
+    """Create an OTEL span when configured, otherwise behave as a no-op context."""
+    try:
+        from opentelemetry import trace
+    except ImportError:
+        yield None
+        return
+
+    tracer = trace.get_tracer(service_context.get())
+    with tracer.start_as_current_span(name) as span:
+        for key, value in (attributes or {}).items():
+            span.set_attribute(key, value)
+        yield span
 
 
 def observe_request(method: str, path: str, status_code: int, duration_ms: float) -> None:
