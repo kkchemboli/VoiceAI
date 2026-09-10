@@ -43,7 +43,7 @@ async def send_ziper_whatsapp(phone_number, message_text):
         }
 
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, params=params, ssl=False) as response:
+            async with session.get(url, params=params) as response:
                 if response.status in [200, 201]:
                     logger.info(f"Successfully sent Ziper.io WhatsApp to {clean_phone}")
                 else:
@@ -85,7 +85,7 @@ async def send_wabridge_whatsapp(phone_number, template_id=None):
         }
 
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, params=params, ssl=False) as response:
+            async with session.get(url, params=params) as response:
                 resp_text = await response.text()
                 logger.info(f"WABridge HTTP {response.status} | Raw: {resp_text}")
 

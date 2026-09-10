@@ -379,7 +379,7 @@ async def entrypoint(ctx: JobContext):
             admin_summary_text = "Call completed but summary could not be generated."
 
         customer_name = booking_info.get("name", "")
-        save_call_log_to_supabase(
+        await save_call_log_to_supabase(
             user_phone=user_phone_normalized or "",
             customer_name=customer_name,
             summary=admin_summary_text,

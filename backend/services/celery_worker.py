@@ -6,8 +6,8 @@ import logging
 from celery import Celery
 from dotenv import load_dotenv
 
+from services.supabase_client import get_supabase_client
 from services.vobiz_outbound import make_outbound_call
-from supabase import create_client
 from core.config import settings
 from core.observability import configure_logging, configure_otel, metrics, start_span
 
@@ -38,12 +38,7 @@ app.conf.timezone = 'UTC'
 SUPABASE_URL = settings.supabase_url
 SUPABASE_KEY = settings.supabase_key
 
-supabase = None
-if SUPABASE_URL and SUPABASE_KEY:
-    try:
-        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-    except Exception as e:
-        logger.error(f"Failed to connect to Supabase: {e}")
+supabase = get_supabase_client()
 
 
 @app.task(bind=True)

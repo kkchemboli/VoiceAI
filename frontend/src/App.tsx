@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { DashboardView } from './components/Dashboard/DashboardView';
-import { MonitorView } from './components/MonitorView';
 import { AgentsView } from './components/AgentsView';
 import { KnowledgeBaseView } from './components/KnowledgeBaseView';
 import { CalendarView } from './components/Calendar';
 import { CallLogsView } from './components/CallLogsView';
 import { OutboundView } from './components/Outbound/OutboundView';
 
-type View = 'dashboard' | 'monitor' | 'agents' | 'knowledge' | 'calendar' | 'models' | 'api' | 'logs' | 'crm' | 'outbound';
+type View = 'dashboard' | 'agents' | 'knowledge' | 'calendar' | 'logs' | 'outbound';
 
 interface CallLog {
   id: number;
@@ -46,7 +45,6 @@ function App() {
   const [fullCallLogs, setFullCallLogs] = useState<CallLog[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
-  const [liveCalls] = useState<any[]>([]); // Future implementation
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCalls, setTotalCalls] = useState(0);
   const pageSize = 100;
@@ -196,33 +194,24 @@ if (response.ok) {
           />
         )}
 
-        {(currentView === 'monitor') && <MonitorView liveCalls={liveCalls} />}
-
-{(currentView === 'agents') && (
-  <AgentsView
-    agentPrompt={agentPrompt}
-    setAgentPrompt={setAgentPrompt}
-    openingGreeting={openingGreeting}
-    setOpeningGreeting={setOpeningGreeting}
-    outboundAgentPrompt={outboundAgentPrompt}
-    setOutboundAgentPrompt={setOutboundAgentPrompt}
-    outboundOpeningGreeting={outboundOpeningGreeting}
-    setOutboundOpeningGreeting={setOutboundOpeningGreeting}
-    onSave={saveAgentSettings}
-    onRefresh={refreshData}
-  />
-)}
+        {currentView === 'agents' && (
+          <AgentsView
+            agentPrompt={agentPrompt}
+            setAgentPrompt={setAgentPrompt}
+            openingGreeting={openingGreeting}
+            setOpeningGreeting={setOpeningGreeting}
+            outboundAgentPrompt={outboundAgentPrompt}
+            setOutboundAgentPrompt={setOutboundAgentPrompt}
+            outboundOpeningGreeting={outboundOpeningGreeting}
+            setOutboundOpeningGreeting={setOutboundOpeningGreeting}
+            onSave={saveAgentSettings}
+            onRefresh={refreshData}
+          />
+        )}
 
         {currentView === 'knowledge' && <KnowledgeBaseView />}
         
         {currentView === 'outbound' && <OutboundView />}
-
-        {(currentView === 'crm') && (
-          <div className="view-container">
-            <h1 className="title">CRM Contacts</h1>
-            <p className="subtitle">Manage your customer relationships and contact history.</p>
-          </div>
-        )}
       </main>
     </div>
   );

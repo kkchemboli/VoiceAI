@@ -1,6 +1,7 @@
 .env
 venv/
 venv_old/
+.venv/
 node_modules/
 dist/
 __pycache__/
@@ -9,4 +10,6 @@ __pycache__/
 .DS_Store
 *.log
 tmp/
+llogs.txt
+backend/data/runtime_config.json
 

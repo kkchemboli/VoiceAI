@@ -6,7 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from contextlib import asynccontextmanager
-from supabase import create_client, Client
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from typing import List, Optional
@@ -14,6 +13,10 @@ import datetime
 import asyncio
 from services.calendar_api import Calendar, FakeCalendar, CalComCalendar
 from services.celery_worker import app as celery_app
+from services.bulk_dialer import outbound_queue
+from services.supabase_client import execute_query, get_supabase_client
+from services.runtime_config import get_sheet_url, set_sheet_url
+from utils.paths import InvalidFilenameError, safe_knowledge_path
 from core.config import settings
 from core.observability import (
     configure_logging,
@@ -132,13 +135,11 @@ app.add_middleware(
 SUPABASE_URL = settings.supabase_url
 SUPABASE_KEY = settings.supabase_key
 
-supabase: Optional[Client] = None
-if SUPABASE_URL and SUPABASE_KEY:
-    try:
-        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-        logger.info("Connected to Supabase")
-    except Exception as e:
-        logger.exception("Failed to connect to Supabase")
+supabase = get_supabase_client()
+if supabase:
+    logger.info("Connected to Supabase")
+else:
+    logger.info("Supabase not configured or unavailable")
 
 # Calendar Service Setup
 timezone = settings.timezone
@@ -197,10 +198,12 @@ async def trigger_outbound_call(request: CallRequest):
     if not supabase:
         raise HTTPException(status_code=503, detail="Supabase is required for queued outbound calls")
     try:
-        response = supabase.table("outbound_calls").insert({
-            "phone_number": request.phone_number,
-            "status": "pending",
-        }).execute()
+        response = await execute_query(
+            supabase.table("outbound_calls").insert({
+                "phone_number": request.phone_number,
+                "status": "pending",
+            })
+        )
         call_record_id = response.data[0]["id"]
         task = celery_app.send_task(
             "services.celery_worker.process_outbound_call",
@@ -219,10 +222,12 @@ async def trigger_batch_calls(request: BatchCallRequest):
     try:
         task_ids = []
         for phone in request.phone_numbers:
-            response = supabase.table("outbound_calls").insert({
-                "phone_number": phone,
-                "status": "pending",
-            }).execute()
+            response = await execute_query(
+                supabase.table("outbound_calls").insert({
+                    "phone_number": phone,
+                    "status": "pending",
+                })
+            )
             call_record_id = response.data[0]["id"]
             task = celery_app.send_task(
                 "services.celery_worker.process_outbound_call",
@@ -239,7 +244,12 @@ async def get_outbound_queue():
     """Get the status of outbound calls"""
     if supabase:
         try:
-            response = supabase.table("outbound_calls").select("*").order("created_at", desc=True).limit(20).execute()
+            response = await execute_query(
+                supabase.table("outbound_calls")
+                .select("*")
+                .order("created_at", desc=True)
+                .limit(20)
+            )
             transformed = []
             for item in response.data:
                 transformed.append({
@@ -270,31 +280,15 @@ async def trigger_bulk_dialer():
 
 @app.post("/api/config/sheet-url")
 async def update_sheet_url(update: SheetUrlUpdate):
-    """Save the GOOGLE_SHEET_URL to the .env file"""
-    env_path = ".env"
-    lines = []
-    
-    if os.path.exists(env_path):
-        with open(env_path, "r") as f:
-            lines = f.readlines()
-    
-    found = False
-    new_line = f"GOOGLE_SHEET_URL={update.url}\n"
-    
-    for i, line in enumerate(lines):
-        if line.startswith("GOOGLE_SHEET_URL="):
-            lines[i] = new_line
-            found = True
-            break
-            
-    if not found:
-        lines.append(f"\n{new_line}")
-        
-    with open(env_path, "w") as f:
-        f.writelines(lines)
-        
-    # Reload env and notify
-    os.environ["GOOGLE_SHEET_URL"] = update.url
+    """Save the GOOGLE_SHEET_URL to runtime config (never mutates .env)."""
+    url = update.url.strip()
+    if not url.startswith("https://docs.google.com/spreadsheets/"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only Google Sheets URLs are allowed (https://docs.google.com/spreadsheets/...).",
+        )
+
+    set_sheet_url(url)
     return {"status": "success", "message": "Google Sheet URL updated and saved."}
 
 
@@ -312,7 +306,7 @@ async def get_knowledge_status():
                 "size": os.path.getsize(os.path.join(base_dir, f))
             })
             
-    sheet_url = os.getenv("GOOGLE_SHEET_URL", "")
+    sheet_url = get_sheet_url()
     return {
         "files": files,
         "sheet_url": sheet_url,
@@ -323,17 +317,21 @@ async def get_knowledge_status():
 @app.post("/api/knowledge/upload")
 async def upload_knowledge_file(file: UploadFile = File(...)):
     """Upload a PDF or TXT knowledge file to the backend directory"""
-    if not file.filename.endswith((".pdf", ".txt")):
+    try:
+        file_path = safe_knowledge_path(
+            os.path.dirname(__file__), file.filename or ""
+        )
+    except InvalidFilenameError:
+        raise HTTPException(status_code=400, detail="Invalid filename.")
+
+    if not file_path.endswith((".pdf", ".txt")):
         raise HTTPException(status_code=400, detail="Only .pdf and .txt files are allowed.")
-    
-    base_dir = os.path.dirname(__file__)
-    file_path = os.path.join(base_dir, file.filename)
-    
+
     try:
         content = await file.read()
         with open(file_path, "wb") as f:
             f.write(content)
-        return {"status": "success", "message": f"Uploaded {file.filename} successfully."}
+        return {"status": "success", "message": f"Uploaded {os.path.basename(file_path)} successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to upload file: {e}")
 
@@ -341,16 +339,15 @@ async def upload_knowledge_file(file: UploadFile = File(...)):
 @app.delete("/api/knowledge/file/{filename}")
 async def delete_knowledge_file(filename: str):
     """Delete a specific knowledge file from the backend directory"""
-    base_dir = os.path.dirname(__file__)
-    file_path = os.path.join(base_dir, filename)
-    
-    if ".." in filename or os.path.isabs(filename):
+    try:
+        file_path = safe_knowledge_path(os.path.dirname(__file__), filename)
+    except InvalidFilenameError:
         raise HTTPException(status_code=400, detail="Invalid filename.")
-        
+
     if os.path.exists(file_path):
         try:
             os.remove(file_path)
-            return {"status": "success", "message": f"Deleted {filename}"}
+            return {"status": "success", "message": f"Deleted {os.path.basename(file_path)}"}
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error deleting file: {e}")
     else:
@@ -373,7 +370,9 @@ async def get_config():
         return config
 
     try:
-        response = supabase.table("agent_config").select("key", "value").execute()
+        response = await execute_query(
+            supabase.table("agent_config").select("key", "value")
+        )
 
         if response.data:
             for item in response.data:
@@ -407,7 +406,7 @@ async def update_config(config: ConfigUpdate):
             updates.append({"key": "outbound_opening_greeting", "value": config.outbound_opening_greeting})
 
         for item in updates:
-            supabase.table("agent_config").upsert(item).execute()
+            await execute_query(supabase.table("agent_config").upsert(item))
 
         return {"status": "success", "message": "Configuration updated"}
     except Exception as e:
@@ -448,12 +447,11 @@ async def get_logs(page: int = Query(1, ge=1), page_size: int = Query(100, ge=1,
     try:
         start = (page - 1) * page_size
         end = start + page_size - 1
-        response = (
+        response = await execute_query(
             supabase.table("call_logs")
             .select("*", count="exact")
             .order("created_at", desc=True)
             .range(start, end)
-            .execute()
         )
         transformed = []
         for log in response.data:
@@ -553,11 +551,10 @@ async def get_knowledge(lang: str = "en"):
         return {"content": f"New knowledge base for {lang}. Start typing to create {filename}."}
 
     try:
-        response = (
+        response = await execute_query(
             supabase.table("knowledge_base")
             .select("content")
             .eq("language", lang)
-            .execute()
         )
         if response.data and len(response.data) > 0:
             return {"content": response.data[0]["content"]}
@@ -591,9 +588,11 @@ async def update_knowledge(lang: str, data: KnowledgeUpdate):
 
     try:
         # Save to Supabase
-        supabase.table("knowledge_base").upsert(
-            {"language": lang, "content": data.content}, on_conflict="language"
-        ).execute()
+        await execute_query(
+            supabase.table("knowledge_base").upsert(
+                {"language": lang, "content": data.content}, on_conflict="language"
+            )
+        )
         
         # Also sync to local file for agent reliability
         with open(path, "w", encoding="utf-8") as f:

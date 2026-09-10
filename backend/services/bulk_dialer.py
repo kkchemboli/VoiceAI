@@ -1,30 +1,15 @@
 import asyncio
 import csv
 import io
-import os
 import logging
 import datetime
-from dotenv import load_dotenv
+
 import aiohttp
-from services.vobiz_outbound import make_outbound_call
-from supabase import create_client, Client
-from typing import Optional
 
-logging.basicConfig(level=logging.INFO)
+from services.supabase_client import execute_query, get_supabase_client
+from services.runtime_config import get_sheet_url
+
 logger = logging.getLogger("bulk-dialer")
-
-load_dotenv()
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-supabase: Optional[Client] = None
-if SUPABASE_URL and SUPABASE_KEY:
-    try:
-        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-        logger.info("Connected to Supabase from bulk_dialer")
-    except Exception as e:
-        logger.error(f"Failed to connect to Supabase from bulk_dialer: {e}")
 
 outbound_queue = []
 
@@ -37,7 +22,7 @@ async def fetch_sheet_data(url):
     if "docs.google.com/spreadsheets" in url and "/edit" in url:
         logger.info("Auto-converting standard sharing link to CSV export link...")
         url = url.split("/edit")[0] + "/export?format=csv"
-    elif "docs.google.com/spreadsheets" in url and not "export?" in url:
+    elif "docs.google.com/spreadsheets" in url and "export?" not in url:
         if not url.endswith("/"):
             url += "/"
         url += "export?format=csv"
@@ -58,11 +43,10 @@ async def fetch_sheet_data(url):
 
 
 async def run_bulk_dialer():
-    sheet_url = os.getenv("GOOGLE_SHEET_URL")
+    sheet_url = get_sheet_url()
     if not sheet_url:
-        logger.error("GOOGLE_SHEET_URL not found in .env file!")
-        logger.error("GOOGLE_SHEET_URL is missing")
-        logger.error("Publish the Google Sheet as CSV and add the link to the runtime environment")
+        logger.error("GOOGLE_SHEET_URL not found in runtime configuration!")
+        logger.error("Set the Google Sheet URL from the admin panel, or provide GOOGLE_SHEET_URL in the .env file")
         return
 
     logger.info("Fetching student list from Google Sheet...")
@@ -95,6 +79,7 @@ async def run_bulk_dialer():
         f"Found columns: Name='{name_col}', Phone='{phone_col}', Course='{course_col}'"
     )
 
+    supabase = get_supabase_client()
     count = 0
     failed_count = 0
     for row in reader:
@@ -113,21 +98,18 @@ async def run_bulk_dialer():
         logger.info("Bulk dialer prompt generated", extra={"prompt": prompt})
 
         call_record_id = None
-        status = "failed"
         error_msg = None
 
         try:
             if supabase:
                 try:
-                    response = (
-                        supabase.table("outbound_calls")
-                        .insert(
+                    response = await execute_query(
+                        supabase.table("outbound_calls").insert(
                             {
                                 "phone_number": phone,
                                 "status": "pending",
                             }
                         )
-                        .execute()
                     )
                     if response.data:
                         call_record_id = response.data[0]["id"]

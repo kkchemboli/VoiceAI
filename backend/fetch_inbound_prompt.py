@@ -3,7 +3,8 @@
 
 import os
 from dotenv import load_dotenv
-from supabase import create_client
+
+from services.supabase_client import get_supabase_client
 
 load_dotenv()
 
@@ -16,7 +17,10 @@ def main():
         print("Error: SUPABASE_URL and SUPABASE_KEY must be set in .env")
         return
 
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    supabase = get_supabase_client()
+    if not supabase:
+        print("Error: could not initialize Supabase client; check SUPABASE_URL/SUPABASE_KEY")
+        return
 
     response = supabase.table("agent_config").select("key", "value").execute()
 
