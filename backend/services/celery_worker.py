@@ -1,5 +1,7 @@
 import asyncio
+import datetime
 import logging
+import pytz
 from celery import Celery
 from dotenv import load_dotenv
 
@@ -25,10 +27,24 @@ app.conf.update(
     broker_connection_retry_on_startup=True,
 )
 
+app.conf.beat_schedule = {
+    'process-campaign-queue-every-minute': {
+        'task': 'services.celery_worker.process_campaign_queue',
+        'schedule': 60.0,
+    },
+}
+app.conf.timezone = 'UTC'
+
 SUPABASE_URL = settings.supabase_url
 SUPABASE_KEY = settings.supabase_key
 
 supabase = get_supabase_client()
+
+
+def in_calling_window() -> bool:
+    """True while within the allowed calling window (08:00 - 20:00 IST)."""
+    now_ist = datetime.datetime.now(pytz.timezone('Asia/Kolkata'))
+    return 8 <= now_ist.hour < 20
 
 
 @app.task(bind=True)
@@ -59,6 +75,51 @@ def import_campaign_leads(self):
         raise
 
 
+@app.task(bind=True)
+def process_campaign_queue(self):
+    """Periodic dispatcher: enqueue a dial task for every pending call inside the calling window."""
+    logger.info("Cron triggered: Dispatching pending calls (task_id=%s)...", self.request.id)
+    metrics.increment("celery_tasks_started_total")
+
+    if not in_calling_window():
+        logger.info("Outside of allowed calling window (08:00 - 20:00 IST). Skipping.")
+        return {"dispatched": 0}
+
+    if not supabase:
+        logger.error("Supabase client is not initialized. Cannot dispatch calls.")
+        return {"dispatched": 0}
+
+    try:
+        response = (
+            supabase.table("outbound_calls")
+            .select("id")
+            .eq("status", "pending")
+            .order("created_at")
+            .limit(10)
+            .execute()
+        )
+
+        if not response.data:
+            logger.info("No pending calls found in the queue.")
+            return {"dispatched": 0}
+
+        dispatched = 0
+        for record in response.data:
+            call_id = record["id"]
+            task = process_outbound_call.apply_async(args=[call_id])
+            dispatched += 1
+            logger.info(
+                "Enqueued outbound call task (call_id=%s, task_id=%s)",
+                call_id,
+                task.id,
+            )
+        logger.info("Dispatched %d pending call(s).", dispatched)
+        return {"dispatched": dispatched}
+    except Exception as error:
+        logger.exception("Error dispatching campaign queue: %s", error)
+        return {"dispatched": 0}
+
+
 @app.task(
     bind=True,
     autoretry_for=(Exception,),
@@ -68,6 +129,10 @@ def import_campaign_leads(self):
 )
 def process_outbound_call(self, call_id: str):
     """Claim and execute one durable outbound call exactly once per status transition."""
+    if not in_calling_window():
+        logger.info("Outside calling window, deferring (call_id=%s)", call_id)
+        return {"status": "deferred", "call_id": call_id}
+
     if not supabase:
         raise RuntimeError("Supabase client is not initialized")
 

@@ -46,6 +46,19 @@ services:
     protocol: redis-celery
     broker: REDIS_URL
     tasks:
+      - name: services.celery_worker.import_campaign_leads
+        schedule_owner: api
+        idempotency_key: outbound_calls.id
+        durable_status_field: outbound_calls.status
+        allowed_statuses:
+          - pending
+          - calling
+          - success
+          - failed
+        retry_policy:
+          acknowledge_after_execution: true
+          reject_on_worker_loss: true
+          prefetch_multiplier: 1
       - name: services.celery_worker.process_campaign_queue
         schedule_owner: celery-beat
         idempotency_key: outbound_calls.id
