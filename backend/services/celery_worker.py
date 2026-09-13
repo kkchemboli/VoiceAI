@@ -95,7 +95,6 @@ def process_campaign_queue(self):
             .select("id")
             .eq("status", "pending")
             .order("created_at")
-            .limit(10)
             .execute()
         )
 
