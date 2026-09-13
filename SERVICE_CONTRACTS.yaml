@@ -59,7 +59,7 @@ services:
           acknowledge_after_execution: true
           reject_on_worker_loss: true
           prefetch_multiplier: 1
-      - name: services.celery_worker.process_campaign_queue
+      - name: services.celery_worker.dispatch_pending_calls
         schedule_owner: celery-beat
         idempotency_key: outbound_calls.id
         durable_status_field: outbound_calls.status
@@ -78,7 +78,7 @@ services:
     broker: REDIS_URL
     singleton: true
     schedules:
-      - task: services.celery_worker.process_campaign_queue
+      - task: services.celery_worker.dispatch_pending_calls
         interval_seconds: 60
 
   redis:

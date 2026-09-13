@@ -15,6 +15,7 @@ from services.calendar_api import Calendar, FakeCalendar, CalComCalendar
 from services.celery_worker import app as celery_app
 from services.supabase_client import execute_query, get_supabase_client
 from services.runtime_config import get_sheet_url, set_sheet_url
+from utils.distributed_lock import BULK_IMPORT_LOCK, is_lock_held, redis_client
 from utils.paths import InvalidFilenameError, safe_knowledge_path
 from core.config import settings
 from core.observability import (
@@ -275,6 +276,8 @@ async def trigger_bulk_dialer():
             status_code=400,
             detail="GOOGLE_SHEET_URL is not configured. Set it from the admin panel or provide GOOGLE_SHEET_URL in the .env file.",
         )
+    if is_lock_held(redis_client, BULK_IMPORT_LOCK):
+        raise HTTPException(status_code=409, detail="A bulk import is already running.")
     task = celery_app.send_task("services.celery_worker.import_campaign_leads")
     return {"success": True, "task_id": task.id, "message": "Campaign lead import enqueued in background."}
 

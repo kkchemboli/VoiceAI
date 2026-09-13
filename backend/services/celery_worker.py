@@ -10,6 +10,13 @@ from services.bulk_dialer import run_bulk_dialer
 from services.vobiz_outbound import make_outbound_call
 from core.config import settings
 from core.observability import configure_logging, configure_otel, metrics, start_span
+from utils.distributed_lock import (
+    BULK_IMPORT_LOCK,
+    BULK_IMPORT_LOCK_TTL_SECONDS,
+    acquire_lock,
+    redis_client,
+    release_lock,
+)
 
 load_dotenv()
 
@@ -28,8 +35,8 @@ app.conf.update(
 )
 
 app.conf.beat_schedule = {
-    'process-campaign-queue-every-minute': {
-        'task': 'services.celery_worker.process_campaign_queue',
+    'dispatch-pending-calls-every-minute': {
+        'task': 'services.celery_worker.dispatch_pending_calls',
         'schedule': 60.0,
     },
 }
@@ -53,6 +60,11 @@ def import_campaign_leads(self):
     logger.info("Campaign lead import triggered (task_id=%s)...", self.request.id)
     metrics.increment("celery_tasks_started_total")
 
+    token = acquire_lock(redis_client, BULK_IMPORT_LOCK, BULK_IMPORT_LOCK_TTL_SECONDS)
+    if token is None:
+        logger.info("Another bulk import is already running (task_id=%s). Skipping.", self.request.id)
+        return {"imported": 0, "enqueued": 0, "skipped": "already_running"}
+
     try:
         with start_span(
             "celery.import_campaign_leads",
@@ -73,10 +85,12 @@ def import_campaign_leads(self):
     except Exception as error:
         logger.exception("Campaign lead import failed (task_id=%s)", self.request.id)
         raise
+    finally:
+        release_lock(redis_client, BULK_IMPORT_LOCK, token)
 
 
 @app.task(bind=True)
-def process_campaign_queue(self):
+def dispatch_pending_calls(self):
     """Periodic dispatcher: enqueue a dial task for every pending call inside the calling window."""
     logger.info("Cron triggered: Dispatching pending calls (task_id=%s)...", self.request.id)
     metrics.increment("celery_tasks_started_total")
