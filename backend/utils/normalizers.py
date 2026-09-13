@@ -140,3 +140,6 @@ def _normalize_phone_e164(phone_str):
     logger.warning(f"Could not normalize phone number: {phone_str} -> {clean}")
     return clean
 
+
+normalize_phone_e164 = _normalize_phone_e164
+

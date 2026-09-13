@@ -13,7 +13,6 @@ import datetime
 import asyncio
 from services.calendar_api import Calendar, FakeCalendar, CalComCalendar
 from services.celery_worker import app as celery_app
-from services.bulk_dialer import outbound_queue
 from services.supabase_client import execute_query, get_supabase_client
 from services.runtime_config import get_sheet_url, set_sheet_url
 from utils.paths import InvalidFilenameError, safe_knowledge_path
@@ -262,20 +261,22 @@ async def get_outbound_queue():
             return transformed
         except Exception as e:
             logger.exception("Error fetching outbound queue from Supabase")
-            return outbound_queue[-20:]
+            return []
 
-    # Fallback to in-memory queue
-    return outbound_queue[-20:]
+    # Fallback when Supabase is not available
+    return []
 
 
 @app.post("/api/outbound/bulk-dial")
 async def trigger_bulk_dialer():
-    """Trigger the specialized bulk_dialer.py logic in a background task"""
-    from services.bulk_dialer import run_bulk_dialer
-    
-    # We run it in the background as it can take a long time (sequential calling)
-    asyncio.create_task(run_bulk_dialer())
-    return {"success": True, "message": "Campaign queue loaded in background."}
+    """Enqueue the campaign lead import, which inserts leads and dispatches per-call dial tasks."""
+    if not get_sheet_url():
+        raise HTTPException(
+            status_code=400,
+            detail="GOOGLE_SHEET_URL is not configured. Set it from the admin panel or provide GOOGLE_SHEET_URL in the .env file.",
+        )
+    task = celery_app.send_task("services.celery_worker.import_campaign_leads")
+    return {"success": True, "task_id": task.id, "message": "Campaign lead import enqueued in background."}
 
 
 @app.post("/api/config/sheet-url")
