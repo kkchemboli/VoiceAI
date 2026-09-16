@@ -473,6 +473,7 @@ if __name__ == "__main__":
         OPENAI_LLM_MODEL,
     )
     metrics.increment("voice_agent_starts_total")
+    start_health_server(port=int(os.getenv("HEALTH_PORT", "9011")))
 
     cli.run_app(
         WorkerOptions(

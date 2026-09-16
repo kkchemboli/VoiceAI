@@ -60,6 +60,20 @@ services:
       GROQ_LLM_MODEL: ${GROQ_LLM_MODEL:-}
       GOOGLE_SHEET_URL: ${GOOGLE_SHEET_URL:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    # healthcheck is the one truth compos can check WITHOUT the colon
+    # The agent binds its OWN health server on loopback :9011 (see agent.py
+    # __main__ -> start_health_server(HEALTH_PORT default 9011)). Probe THAT
+    # socket, with python3 (the image has no curl/wget).
+    healthcheck:
+      test:
+        - "CMD"
+        - "python3"
+        - "-c"
+        - "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:9011/health/live', timeout=2); sys.exit(0)"
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
     networks:
       - backend
 
@@ -89,6 +103,12 @@ services:
         condition: service_healthy
     networks:
       - backend
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:9010/health/live', timeout=2); sys.exit(0)"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
   celery-beat:
     build:
@@ -248,6 +268,7 @@ services:
 
 volumes:
   alertmanager-data:
+  redis-data:
   loki-data:
   prometheus-data:
   grafana-data:
