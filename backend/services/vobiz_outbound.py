@@ -7,12 +7,14 @@ import logging
 from dotenv import load_dotenv
 from livekit import api
 
+from core.observability import current_traceparent, set_correlation
+
 logger = logging.getLogger("outbound-call")
 
 load_dotenv()
 
 
-async def make_outbound_call(destination_number, recipient_name="Student", target_course="our technical programs", wait_for_completion=False):
+async def make_outbound_call(destination_number, recipient_name="Student", target_course="our technical programs", wait_for_completion=False, call_id=None):
     """
     Initiates an outbound SIP call via LiveKit and Vobiz.
     """
@@ -41,12 +43,23 @@ async def make_outbound_call(destination_number, recipient_name="Student", targe
 
     lkapi = api.LiveKitAPI(url, api_key, api_secret)
 
-    logger.info("Dialing outbound destination", extra={"room_name": room_name})
+    if call_id:
+        set_correlation(call_id=str(call_id))
+        logger.info("Dialing outbound destination", extra={"room_name": room_name, "call_id": call_id})
+    else:
+        logger.info("Dialing outbound destination", extra={"room_name": room_name})
 
-    metadata = json.dumps({
+    metadata_obj: dict = {
         "recipientName": recipient_name,
-        "targetCourse": target_course
-    })
+        "targetCourse": target_course,
+    }
+    if call_id:
+        metadata_obj["callId"] = str(call_id)
+    traceparent = current_traceparent()
+    if traceparent:
+        metadata_obj["traceparent"] = traceparent
+        metadata_obj["tracestate"] = ""
+    metadata = json.dumps(metadata_obj)
 
     try:
         logger.info("Dispatching outbound agent")

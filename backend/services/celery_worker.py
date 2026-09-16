@@ -1,6 +1,8 @@
 import asyncio
 import datetime
 import logging
+import os
+import sys
 import pytz
 from celery import Celery
 from dotenv import load_dotenv
@@ -9,7 +11,19 @@ from services.supabase_client import get_supabase_client
 from services.bulk_dialer import run_bulk_dialer
 from services.vobiz_outbound import make_outbound_call
 from core.config import settings
-from core.observability import configure_logging, configure_otel, metrics, start_span
+from core.observability import (
+    attach_otel_context,
+    celery_task_headers,
+    configure_logging,
+    configure_otel,
+    correlation_context,
+    detach_otel_context,
+    extract_otel_context,
+    init_sentry,
+    metrics,
+    start_health_server,
+    start_span,
+)
 from utils.distributed_lock import (
     BULK_IMPORT_LOCK,
     BULK_IMPORT_LOCK_TTL_SECONDS,
@@ -23,6 +37,10 @@ load_dotenv()
 logger = logging.getLogger("celery-worker")
 configure_logging("celery-worker")
 configure_otel("celery-worker")
+init_sentry("celery-worker")
+
+if "beat" not in (part.lower() for part in sys.argv):
+    start_health_server(port=int(os.getenv("HEALTH_PORT", "9010")))
 
 redis_url = settings.redis_url
 app = Celery("campaign_worker", broker=redis_url)
@@ -57,80 +75,96 @@ def in_calling_window() -> bool:
 @app.task(bind=True)
 def import_campaign_leads(self):
     """Import leads from the campaign sheet and enqueue one dial task per lead."""
-    logger.info("Campaign lead import triggered (task_id=%s)...", self.request.id)
-    metrics.increment("celery_tasks_started_total")
-
-    token = acquire_lock(redis_client, BULK_IMPORT_LOCK, BULK_IMPORT_LOCK_TTL_SECONDS)
-    if token is None:
-        logger.info("Another bulk import is already running (task_id=%s). Skipping.", self.request.id)
-        return {"imported": 0, "enqueued": 0, "skipped": "already_running"}
-
+    token = attach_otel_context(extract_otel_context(self.request.headers))
     try:
-        with start_span(
-            "celery.import_campaign_leads",
-            {"celery.task_id": self.request.id},
-        ) as span:
-            call_ids = asyncio.run(run_bulk_dialer())
-            for call_id in call_ids:
-                task = process_outbound_call.apply_async(args=[call_id])
-                logger.info(
-                    "Enqueued outbound call task (call_id=%s, task_id=%s)",
-                    call_id,
-                    task.id,
-                )
-            if span is not None:
-                span.set_attribute("celery.leads_imported", len(call_ids))
-        logger.info("Campaign lead import completed (task_id=%s)", self.request.id)
-        return {"imported": len(call_ids), "enqueued": len(call_ids)}
-    except Exception as error:
-        logger.exception("Campaign lead import failed (task_id=%s)", self.request.id)
-        raise
+        with correlation_context(task_id=self.request.id):
+            logger.info("Campaign lead import triggered (task_id=%s)...", self.request.id)
+            metrics.increment("celery_tasks_started_total")
+
+            lock_token = acquire_lock(redis_client, BULK_IMPORT_LOCK, BULK_IMPORT_LOCK_TTL_SECONDS)
+            if lock_token is None:
+                logger.info("Another bulk import is already running (task_id=%s). Skipping.", self.request.id)
+                return {"imported": 0, "enqueued": 0, "skipped": "already_running"}
+
+            try:
+                with start_span(
+                    "celery.import_campaign_leads",
+                    {"celery.task_id": self.request.id},
+                ) as span:
+                    call_ids = asyncio.run(run_bulk_dialer())
+                    for call_id in call_ids:
+                        task = process_outbound_call.apply_async(
+                            args=[call_id],
+                            headers=celery_task_headers(call_id=str(call_id)),
+                        )
+                        logger.info(
+                            "Enqueued outbound call task (call_id=%s, task_id=%s)",
+                            call_id,
+                            task.id,
+                        )
+                    if span is not None:
+                        span.set_attribute("celery.leads_imported", len(call_ids))
+                logger.info("Campaign lead import completed (task_id=%s)", self.request.id)
+                return {"imported": len(call_ids), "enqueued": len(call_ids)}
+            except Exception as error:
+                logger.exception("Campaign lead import failed (task_id=%s)", self.request.id)
+                raise
+            finally:
+                release_lock(redis_client, BULK_IMPORT_LOCK, lock_token)
     finally:
-        release_lock(redis_client, BULK_IMPORT_LOCK, token)
+        detach_otel_context(token)
 
 
 @app.task(bind=True)
 def dispatch_pending_calls(self):
     """Periodic dispatcher: enqueue a dial task for every pending call inside the calling window."""
-    logger.info("Cron triggered: Dispatching pending calls (task_id=%s)...", self.request.id)
-    metrics.increment("celery_tasks_started_total")
-
-    if not in_calling_window():
-        logger.info("Outside of allowed calling window (08:00 - 20:00 IST). Skipping.")
-        return {"dispatched": 0}
-
-    if not supabase:
-        logger.error("Supabase client is not initialized. Cannot dispatch calls.")
-        return {"dispatched": 0}
-
+    token = attach_otel_context(extract_otel_context(self.request.headers))
     try:
-        response = (
-            supabase.table("outbound_calls")
-            .select("id")
-            .eq("status", "pending")
-            .order("created_at")
-            .execute()
-        )
+        with correlation_context(task_id=self.request.id):
+            logger.info("Cron triggered: Dispatching pending calls (task_id=%s)...", self.request.id)
+            metrics.increment("celery_tasks_started_total")
 
-        if not response.data:
-            logger.info("No pending calls found in the queue.")
-            return {"dispatched": 0}
+            if not in_calling_window():
+                logger.info("Outside of allowed calling window (08:00 - 20:00 IST). Skipping.")
+                return {"dispatched": 0}
 
-        dispatched = 0
-        for record in response.data:
-            call_id = record["id"]
-            task = process_outbound_call.apply_async(args=[call_id])
-            dispatched += 1
-            logger.info(
-                "Enqueued outbound call task (call_id=%s, task_id=%s)",
-                call_id,
-                task.id,
-            )
-        logger.info("Dispatched %d pending call(s).", dispatched)
-        return {"dispatched": dispatched}
-    except Exception as error:
-        logger.exception("Error dispatching campaign queue: %s", error)
-        return {"dispatched": 0}
+            if not supabase:
+                logger.error("Supabase client is not initialized. Cannot dispatch calls.")
+                return {"dispatched": 0}
+
+            try:
+                response = (
+                    supabase.table("outbound_calls")
+                    .select("id")
+                    .eq("status", "pending")
+                    .order("created_at")
+                    .execute()
+                )
+
+                if not response.data:
+                    logger.info("No pending calls found in the queue.")
+                    return {"dispatched": 0}
+
+                dispatched = 0
+                for record in response.data:
+                    call_id = record["id"]
+                    task = process_outbound_call.apply_async(
+                        args=[call_id],
+                        headers=celery_task_headers(call_id=str(call_id)),
+                    )
+                    dispatched += 1
+                    logger.info(
+                        "Enqueued outbound call task (call_id=%s, task_id=%s)",
+                        call_id,
+                        task.id,
+                    )
+                logger.info("Dispatched %d pending call(s).", dispatched)
+                return {"dispatched": dispatched}
+            except Exception as error:
+                logger.exception("Error dispatching campaign queue: %s", error)
+                return {"dispatched": 0}
+    finally:
+        detach_otel_context(token)
 
 
 @app.task(
@@ -175,23 +209,31 @@ def process_outbound_call(self, call_id: str):
         return {"status": "skipped", "call_id": call_id}
 
     try:
-        with start_span(
-            "celery.process_outbound_call",
-            {"celery.task_id": self.request.id, "call.id": call_id},
-        ) as span:
-            asyncio.run(
-                make_outbound_call(
-                    record["phone_number"],
-                    record.get("name", "Student"),
-                    record.get("course", "our training programs"),
-                    wait_for_completion=True,
-                )
-            )
-            if span is not None:
-                span.set_attribute("celery.task.status", "success")
-        supabase.table("outbound_calls").update({"status": "success"}).eq("id", call_id).execute()
-        logger.info("Outbound call completed (call_id=%s, task_id=%s)", call_id, self.request.id)
-        return {"status": "success", "call_id": call_id}
+        parent_ctx = extract_otel_context(self.request.headers)
+        token = attach_otel_context(parent_ctx)
+        try:
+            with correlation_context(call_id=str(call_id), task_id=self.request.id):
+                with start_span(
+                    "celery.process_outbound_call",
+                    {"celery.task_id": self.request.id, "call.id": str(call_id)},
+                    context=parent_ctx,
+                ) as span:
+                    asyncio.run(
+                        make_outbound_call(
+                            record["phone_number"],
+                            record.get("name", "Student"),
+                            record.get("course", "our training programs"),
+                            wait_for_completion=True,
+                            call_id=str(call_id),
+                        )
+                    )
+                    if span is not None:
+                        span.set_attribute("celery.task.status", "success")
+                supabase.table("outbound_calls").update({"status": "success"}).eq("id", call_id).execute()
+                logger.info("Outbound call completed (call_id=%s, task_id=%s)", call_id, self.request.id)
+                return {"status": "success", "call_id": call_id}
+        finally:
+            detach_otel_context(token)
     except Exception as error:
         supabase.table("outbound_calls").update(
             {"status": "failed", "error_message": str(error)}

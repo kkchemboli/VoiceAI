@@ -6,7 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from contextlib import asynccontextmanager
-from dotenv import load_dotenv
 from pydantic import BaseModel
 from typing import List, Optional
 import datetime
@@ -19,25 +18,29 @@ from utils.distributed_lock import BULK_IMPORT_LOCK, is_lock_held, redis_client
 from utils.paths import InvalidFilenameError, safe_knowledge_path
 from core.config import settings
 from core.observability import (
+    celery_task_headers,
     configure_logging,
     configure_otel,
+    current_otel_context,
+    init_sentry,
     metrics,
     new_correlation_id,
     observe_request,
     request_id_context,
     service_context,
+    set_correlation,
     start_span,
-    trace_id_context,
 )
 import sys
 import json
+from dotenv import load_dotenv
+
+load_dotenv()
 
 configure_logging("api")
 configure_otel("api")
+init_sentry("api")
 logger = logging.getLogger("voice-backend")
-
-# Load environment variables
-load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -65,9 +68,7 @@ app = FastAPI(title="Voice Agent API", lifespan=lifespan)
 @app.middleware("http")
 async def request_observability(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID") or new_correlation_id()
-    trace_id = request.headers.get("X-Trace-ID") or request_id
     request_token = request_id_context.set(request_id)
-    trace_token = trace_id_context.set(trace_id)
     service_token = service_context.set("api")
     started = time.perf_counter()
     response = None
@@ -88,9 +89,9 @@ async def request_observability(request: Request, call_next):
         if response is not None:
             observe_request(request.method, request.url.path, response.status_code, duration_ms)
             response.headers["X-Request-ID"] = request_id
-            response.headers["X-Trace-ID"] = trace_id
+            trace_id, _ = current_otel_context()
+            response.headers["X-Trace-ID"] = trace_id if trace_id != "-" else request_id
         request_id_context.reset(request_token)
-        trace_id_context.reset(trace_token)
         service_context.reset(service_token)
 
 
@@ -115,11 +116,6 @@ async def readiness_check():
         return JSONResponse(status_code=503, content=payload)
     return payload
 
-
-@app.get("/metrics")
-async def metrics_check():
-    """Return process-local counters for the deployment metrics collector."""
-    return {"service": "api", "metrics": metrics.snapshot()}
 
 # Enable CORS for frontend development
 cors_origins = list(settings.cors_allowed_origins)
@@ -205,9 +201,11 @@ async def trigger_outbound_call(request: CallRequest):
             })
         )
         call_record_id = response.data[0]["id"]
+        set_correlation(call_id=str(call_record_id))
         task = celery_app.send_task(
             "services.celery_worker.process_outbound_call",
             args=[call_record_id],
+            headers=celery_task_headers(call_id=str(call_record_id)),
         )
         return {"success": True, "call_id": call_record_id, "task_id": task.id}
     except Exception as e:
@@ -229,9 +227,11 @@ async def trigger_batch_calls(request: BatchCallRequest):
                 })
             )
             call_record_id = response.data[0]["id"]
+            set_correlation(call_id=str(call_record_id))
             task = celery_app.send_task(
                 "services.celery_worker.process_outbound_call",
                 args=[call_record_id],
+                headers=celery_task_headers(call_id=str(call_record_id)),
             )
             task_ids.append(task.id)
         return {"success": True, "task_ids": task_ids, "count": len(task_ids)}
@@ -278,7 +278,10 @@ async def trigger_bulk_dialer():
         )
     if is_lock_held(redis_client, BULK_IMPORT_LOCK):
         raise HTTPException(status_code=409, detail="A bulk import is already running.")
-    task = celery_app.send_task("services.celery_worker.import_campaign_leads")
+    task = celery_app.send_task(
+        "services.celery_worker.import_campaign_leads",
+        headers=celery_task_headers(),
+    )
     return {"success": True, "task_id": task.id, "message": "Campaign lead import enqueued in background."}
 
 

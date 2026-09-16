@@ -27,7 +27,18 @@ import livekit.plugins.sarvam as sarvam
 import livekit.plugins.silero as silero
 from livekit import rtc
 from core.config import settings
-from core.observability import configure_logging, configure_otel, metrics
+from core.observability import (
+    attach_otel_context,
+    configure_logging,
+    configure_otel,
+    detach_otel_context,
+    extract_otel_context,
+    init_sentry,
+    metrics,
+    set_correlation,
+    start_health_server,
+    start_span,
+)
 
 # Core, Prompts, Services, Tools, Utils Imports
 from core.patches import apply_audio_patches
@@ -50,6 +61,7 @@ apply_audio_patches()
 logger = logging.getLogger("voice-agent")
 configure_logging("voice-agent")
 configure_otel("voice-agent")
+init_sentry("voice-agent")
 
 OPENAI_LLM_MODEL = settings.openai_llm_model
 
@@ -86,6 +98,26 @@ def prewarm(proc: JobProcess):
 
 
 async def entrypoint(ctx: JobContext):
+    job_meta: dict = {}
+    if ctx.job.metadata:
+        try:
+            job_meta = json.loads(ctx.job.metadata)
+        except (json.JSONDecodeError, TypeError):
+            job_meta = {}
+    set_correlation(
+        call_id=str(job_meta.get("callId") or "-"),
+        room_id=ctx.room.name,
+    )
+    otel_token = attach_otel_context(
+        extract_otel_context(
+            {
+                "traceparent": job_meta.get("traceparent", ""),
+                "tracestate": job_meta.get("tracestate", ""),
+            }
+        )
+    )
+    metrics.increment("voice_calls_started_total")
+
     logger.info("Job assigned to voice worker", extra={"room_name": ctx.room.name})
     logger.debug("Voice entrypoint started", extra={"room_name": ctx.room.name})
     try:
@@ -138,11 +170,10 @@ async def entrypoint(ctx: JobContext):
     recipient_name = "Student"
     target_course = "our technical programs"
 
-    if ctx.job.metadata and ctx.job.metadata.strip():
+    if job_meta:
         try:
-            meta = json.loads(ctx.job.metadata)
-            recipient_name = meta.get("recipientName", recipient_name)
-            target_course = meta.get("targetCourse", target_course)
+            recipient_name = job_meta.get("recipientName", recipient_name)
+            target_course = job_meta.get("targetCourse", target_course)
 
             generic_vals = ["our technical programs", "our training programs", "technical programs", "training programs", "none", "unknown"]
             if not target_course or target_course.lower().strip() in generic_vals:
