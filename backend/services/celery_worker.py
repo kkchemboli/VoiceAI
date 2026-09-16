@@ -140,6 +140,12 @@ def dispatch_pending_calls(self):
                     .order("created_at")
                     .execute()
                 )
+                # A worker that crashes mid-burst leaves rows stuck in "pending".
+                # This is THE backlog signal for the "last call" debuggability
+                # guarantee — gauge what the dispatcher actually sees at each
+                # beat, so alerts measure truth, not a fabricated queue depth.
+                metrics.record("voice_calls_pending_total", float(len(response.data)))
+                metrics.record("voice_calls_queued_gauge", float(len(response.data)))
 
                 if not response.data:
                     logger.info("No pending calls found in the queue.")
@@ -238,5 +244,6 @@ def process_outbound_call(self, call_id: str):
         supabase.table("outbound_calls").update(
             {"status": "failed", "error_message": str(error)}
         ).eq("id", call_id).execute()
+        metrics.increment("voice_calls_error_total")
         logger.exception("Outbound call failed (call_id=%s, task_id=%s)", call_id, self.request.id)
         raise

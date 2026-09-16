@@ -1,0 +1,23 @@
+# Minimal Alertmanager config. Honest by construction:
+#   - There is NO configured notification channel (no email/webhook/integration
+#     credentials exist in this stack), so the single route is the `log`
+#     receiver: alerts are guaranteed to reach THIS process's stdout, which
+#     docker-compose surfaces with `docker compose logs alertmanager`.
+#   - Analogous to the collector, nothing is invented: no fake SNS/Slack/PagerDuty
+#     targets that would silently 404.
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: "log"
+  group_by: ["alertname"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: "log"
+    webhook_configs:
+      # Any URL with a clearly-fake port 9xx would fail loudly; we choose to log
+      # only (local file write is brought in by the ops that own notifications).
+      - url: "http://127.0.0.1:1/blackhole"

@@ -182,6 +182,19 @@ services:
     networks:
       - backend
 
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --log.level=info
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/data
+    ports:
+      - "9093:9093"
+    networks:
+      - backend
+
   prometheus:
     image: prom/prometheus:v3.5.0
     command:
@@ -190,6 +203,7 @@ services:
       - --storage.tsdb.retention.time=15d
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus-alerts.yml:/etc/prometheus/prometheus-alerts.yml:ro
       - prometheus-data:/prometheus
     depends_on:
       otel-collector:
@@ -233,7 +247,7 @@ services:
       retries: 5
 
 volumes:
-  redis-data:
+  alertmanager-data:
   loki-data:
   prometheus-data:
   grafana-data:
