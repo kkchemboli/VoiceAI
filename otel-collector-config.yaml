@@ -7,29 +7,80 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 1536
+    spike_limit_mib: 256
+  resourcedetection:
+    detectors: [env, system]
+    timeout: 10s
+  tail_sampling:
+    decision_wait: 30s
+    num_traces: 100000
+    expected_new_trace_rate: 30
+    policies:
+      - name: errors-and-call-traces
+        type: composite
+        composite:
+          max_total_spans: 20000
+          policy_order: [errors, call-traces]
+          subm_policy:
+            - name: errors
+              type: status_code
+              status_code:
+                codes: [ERROR]
+            - name: call-traces
+              type: string_attribute
+              string_attribute:
+                key: call.id
+                values: ["true"]
+                enabled_regex_matching: true
+                cache_max_size: 10000
   batch:
+    send_batch_size: 1024
+    timeout: 5s
+  batch/logs:
+    send_batch_size: 512
+    timeout: 3s
 
 exporters:
   loki:
     endpoint: http://loki:3100/loki/api/v1/push
+    default_labels_enabled:
+      exporter: true
+      job: true
+      service: true
+    tenant:
+      context_key: com.splunk.sourcetype
   prometheus:
     endpoint: 0.0.0.0:8889
+    resource_to_telemetry_conversion:
+      enabled: true
   otlp/jaeger:
     endpoint: jaeger:4317
     tls:
       insecure: true
 
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  pprof:
+    endpoint: 0.0.0.0:1888
+  zpages:
+    endpoint: 0.0.0.0:55679
+
 service:
+  extensions: [health_check, pprof, zpages]
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [batch]
+      processors: [memory_limiter, resourcedetection, batch/logs]
       exporters: [loki]
     metrics:
       receivers: [otlp]
-      processors: [batch]
+      processors: [memory_limiter, resourcedetection, batch]
       exporters: [prometheus]
     traces:
       receivers: [otlp]
-      processors: [batch]
+      processors: [memory_limiter, resourcedetection, tail_sampling, batch]
       exporters: [otlp/jaeger]
