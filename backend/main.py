@@ -87,7 +87,11 @@ async def request_observability(request: Request, call_next):
     finally:
         duration_ms = (time.perf_counter() - started) * 1000
         if response is not None:
-            observe_request(request.method, request.url.path, response.status_code, duration_ms)
+            # Low-cardinality metric label: the matched FastAPI route template
+            # (e.g. "/api/knowledge/{filename}") instead of the raw request path,
+            # which would otherwise explode label cardinality with per-request IDs.
+            route = getattr(request.scope.get("route"), "path", None)
+            observe_request(request.method, route or request.url.path, response.status_code, duration_ms)
             response.headers["X-Request-ID"] = request_id
             trace_id, _ = current_otel_context()
             response.headers["X-Trace-ID"] = trace_id if trace_id != "-" else request_id
