@@ -14,21 +14,13 @@ processors:
   resourcedetection:
     detectors: [env, system]
     timeout: 10s
-  # Export only full traces that contain an error. A voice call can remain
-  # active for several minutes, so retain the in-flight trace long enough for
-  # a late failure to be observed before the sampling decision is made.
-  tail_sampling:
-    decision_wait: 15m
-    num_traces: 20000
-    expected_new_trace_rate: 5
-    policies:
-      - name: errors
-        type: status_code
-        status_code:
-          status_codes: [ERROR]
   batch:
     send_batch_size: 1024
     timeout: 5s
+  # Keep voice-call traces near real time once a call ends.
+  batch/traces:
+    send_batch_size: 128
+    timeout: 1s
   batch/logs:
     send_batch_size: 512
     timeout: 3s
@@ -78,5 +70,5 @@ service:
       exporters: [prometheus]
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, tail_sampling, batch]
+      processors: [memory_limiter, resourcedetection, batch/traces]
       exporters: [otlphttp/langfuse]

@@ -200,8 +200,8 @@ def configure_otel(service_name: str) -> None:
 def configure_otel_tracing(service_name: str) -> Any:
     """Configure an OTLP trace provider only for a service that opts in.
 
-    The collector performs tail-based sampling, so the SDK must create every
-    span and let the collector decide which complete traces to retain.
+    The voice runtime is the only caller today. It exports complete call traces
+    to the collector, which forwards them to Langfuse.
     """
     endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
     enabled = os.getenv("OTEL_TRACES_ENABLED", "false").lower() in {"1", "true", "yes"}
@@ -229,6 +229,35 @@ def configure_otel_tracing(service_name: str) -> Any:
             "OTEL_TRACES_ENABLED is set but OpenTelemetry trace packages are unavailable"
         )
         return None
+
+
+def mark_current_span_error(
+    message: str,
+    *,
+    error: Optional[BaseException] = None,
+    attributes: Optional[dict[str, Any]] = None,
+) -> None:
+    """Mark a caught operational failure on the active OTel tool/span.
+
+    Tool functions often return an error string to the LLM instead of raising.
+    Recording the failure here makes that silent failure searchable in the
+    trace without changing the agent's conversational recovery behavior.
+    """
+    try:
+        from opentelemetry import trace
+        from opentelemetry.trace import Status, StatusCode
+    except ImportError:
+        return
+    span = trace.get_current_span()
+    if not span.get_span_context().is_valid:
+        return
+    span.set_attribute("tool.success", False)
+    for key, value in (attributes or {}).items():
+        span.set_attribute(key, value)
+    if error is not None:
+        span.record_exception(error)
+        span.set_attribute("error.type", type(error).__name__)
+    span.set_status(Status(StatusCode.ERROR, message))
 
 
 def install_instrumentation() -> None:

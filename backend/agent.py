@@ -151,6 +151,13 @@ async def entrypoint(ctx: JobContext):
             otel_context.detach(call_trace_token)
         detach_otel_context(otel_token)
 
+    async def flush_trace() -> None:
+        """Flush a completed call trace before the LiveKit job is reclaimed."""
+        if otel_tracer_provider is not None:
+            await asyncio.to_thread(otel_tracer_provider.force_flush, 10_000)
+
+    ctx.add_shutdown_callback(flush_trace)
+
     metrics.increment("voice_calls_started_total")
 
     logger.info("Job assigned to voice worker", extra={"room_name": ctx.room.name})
@@ -488,6 +495,7 @@ async def entrypoint(ctx: JobContext):
     finally:
         logger.info("Room disconnected or autocut triggered - Entrypoint exiting.")
         finish_call_trace()
+        await flush_trace()
 
 
 if __name__ == "__main__":

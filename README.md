@@ -19,7 +19,7 @@ OpenTelemetry observability stack.
 - **RAG knowledge engine** — answers grounded in local TXT/PDF files, Google Sheets, and a Supabase knowledge base.
 - **Automatic call summaries** — delivered to Telegram, WhatsApp (admin + customer), and stored as call logs.
 - **Admin panel** — dashboard, call logs, knowledge base editor, calendar, agent prompt configuration, and outbound campaign controls.
-- **Observable by design** — OpenTelemetry metrics/logs go to Prometheus/Loki; failed voice-agent traces, including LLM and tool context, go to Langfuse.
+- **Observable by design** — OpenTelemetry metrics/logs go to Prometheus/Loki; complete voice-agent traces, including LLM and tool context, go to Langfuse.
 
 ## Architecture
 
@@ -31,7 +31,7 @@ OpenTelemetry observability stack.
 | `celery-beat` | Celery beat | Periodic dispatcher that enqueues pending calls inside the calling window |
 | `redis` | Redis 7 | Celery broker, short-lived coordination state, distributed bulk-import lock |
 | `frontend` | Nginx + static build | React/Vite admin panel; proxies `/api` to the `api` service |
-| `otel-collector` | OpenTelemetry collector | Receives OTLP, fans out to Prometheus, Loki, and error-only Langfuse traces |
+| `otel-collector` | OpenTelemetry collector | Receives OTLP, fans out to Prometheus, Loki, and Langfuse traces |
 | `prometheus` / `loki` / `langfuse` | Metrics, logs, LLM trace stores | Observability backends |
 | `grafana` | Dashboards | Visualizes metrics and logs |
 
@@ -74,7 +74,7 @@ Runtime boundaries, contracts, and configuration ownership are documented in
 ├── docker-compose.redis.yml    # Redis-only stack
 ├── supervisord.conf            # Legacy all-in-one process manager
 ├── SERVICE_CONTRACTS.yaml      # Service-level contracts
-└── otel-collector-config.yaml  # OTLP -> Prometheus / Loki / Langfuse (errors)
+└── otel-collector-config.yaml  # OTLP -> Prometheus / Loki / Langfuse
 ```
 
 ## Prerequisites
@@ -189,14 +189,11 @@ into the agent's room; outbound calls are dialed through `LIVEKIT_SIP_OUTBOUND_T
 
 All services emit OTLP to the `otel-collector`, which sends logs to **Loki** and metrics to
 **Prometheus**. The voice agent also emits LiveKit session, LLM, tool, and call spans; the collector
-stores a complete trace in **Langfuse** only when that trace contains an error. Grafana visualizes the
-Prometheus and Loki signals.
-
-The error-only policy is tail-based: traces are retained in the collector for up to 15 minutes before
-the decision, so a failure late in an active call still retains its complete diagnostic context.
+stores each completed voice-call trace in **Langfuse**. Grafana visualizes the Prometheus and Loki
+signals.
 
 - FastAPI: metrics (`/metrics`) and request ID headers
-- Voice agent: call-correlated LLM traces in Langfuse when an error occurs, plus metrics
+- Voice agent: call-correlated LLM traces in Langfuse, plus metrics; caught tool failures are marked as errors
 - Celery: task metrics (started count, sample counters)
 
 ## API Overview

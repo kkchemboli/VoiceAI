@@ -4,6 +4,7 @@ from collections import defaultdict
 from livekit.agents import llm
 from utils.formatting import _format_date_human
 from utils.normalizers import _normalize_slot_key, _normalize_phone_e164
+from core.observability import mark_current_span_error
 
 logger = logging.getLogger("voice-agent")
 
@@ -102,9 +103,18 @@ def create_calendar_tools(
                 phone_number=formatted_phone,
             )
             if result.startswith("Error"):
+                mark_current_span_error(
+                    result,
+                    attributes={"tool.name": "schedule_demo_class"},
+                )
                 return result
         except Exception as e:
             logger.error(f"Unexpected error in schedule_demo_class: {e}")
+            mark_current_span_error(
+                "Calendar appointment scheduling failed",
+                error=e,
+                attributes={"tool.name": "schedule_demo_class"},
+            )
             return f"Error: An unexpected error occurred while booking. ({str(e)})"
 
         local = slot.start_time.astimezone(tz_info)

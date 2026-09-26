@@ -4,6 +4,7 @@ from typing import Annotated, Optional
 
 from livekit import agents, api
 from livekit.agents import llm
+from core.observability import mark_current_span_error
 
 logger = logging.getLogger("call-transfer")
 
@@ -25,6 +26,10 @@ class TransferFunctions(llm.ToolContext):
         if destination is None or str(destination).lower() in [p.lower() for p in placeholders]:
             destination = os.getenv("DEFAULT_TRANSFER_NUMBER")
             if not destination:
+                mark_current_span_error(
+                    "No default transfer destination configured",
+                    attributes={"tool.name": "transfer_call"},
+                )
                 return "Error: No default transfer number configured in .env."
 
         if destination:
@@ -46,10 +51,18 @@ class TransferFunctions(llm.ToolContext):
                     if destination and not destination.startswith("tel:"):
                         destination = f"tel:{destination}" if destination.startswith("+") else f"tel:+{destination}"
                     if not destination:
+                        mark_current_span_error(
+                            "Transfer destination could not be formatted",
+                            attributes={"tool.name": "transfer_call"},
+                        )
                         return "Error: Could not format transfer destination."
 
         if not destination or not (destination.startswith("sip:") or destination.startswith("sips:") or destination.startswith("tel:")):
             logger.error(f"Invalid transfer destination after formatting: {destination}")
+            mark_current_span_error(
+                "Invalid transfer destination",
+                attributes={"tool.name": "transfer_call"},
+            )
             return "Error: Invalid transfer destination format."
 
         participant_identity = None
@@ -66,6 +79,10 @@ class TransferFunctions(llm.ToolContext):
             participant_identity = f"sip_+{self.phone_number}"
 
         if not participant_identity:
+            mark_current_span_error(
+                "Transfer caller could not be identified",
+                attributes={"tool.name": "transfer_call"},
+            )
             return "Error: Could not identify the caller for transfer."
 
         try:
@@ -89,4 +106,9 @@ class TransferFunctions(llm.ToolContext):
             return "Transfer initiated successfully."
         except Exception as e:
             logger.error(f"Transfer failed: {e}")
+            mark_current_span_error(
+                "SIP transfer failed",
+                error=e,
+                attributes={"tool.name": "transfer_call"},
+            )
             return f"Error executing transfer: {e}"
