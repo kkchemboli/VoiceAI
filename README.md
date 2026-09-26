@@ -19,7 +19,7 @@ OpenTelemetry observability stack.
 - **RAG knowledge engine** — answers grounded in local TXT/PDF files, Google Sheets, and a Supabase knowledge base.
 - **Automatic call summaries** — delivered to Telegram, WhatsApp (admin + customer), and stored as call logs.
 - **Admin panel** — dashboard, call logs, knowledge base editor, calendar, agent prompt configuration, and outbound campaign controls.
-- **Observable by design** — OpenTelemetry traces/logs/metrics exported to Prometheus, Loki, and Jaeger, visualized in Grafana.
+- **Observable by design** — OpenTelemetry logs and metrics exported to Loki and Prometheus, visualized in Grafana.
 
 ## Architecture
 
@@ -31,9 +31,9 @@ OpenTelemetry observability stack.
 | `celery-beat` | Celery beat | Periodic dispatcher that enqueues pending calls inside the calling window |
 | `redis` | Redis 7 | Celery broker, short-lived coordination state, distributed bulk-import lock |
 | `frontend` | Nginx + static build | React/Vite admin panel; proxies `/api` to the `api` service |
-| `otel-collector` | OpenTelemetry collector | Receives OTLP, fans out to Prometheus, Loki, and Jaeger |
-| `prometheus` / `loki` / `jaeger` | Metrics, logs, traces stores | Backends for the dashboards |
-| `grafana` | Dashboards | Visualizes metrics, logs, and traces |
+| `otel-collector` | OpenTelemetry collector | Receives OTLP metrics and logs, fans out to Prometheus and Loki |
+| `prometheus` / `loki` | Metrics and logs stores | Backends for the dashboards |
+| `grafana` | Dashboards | Visualizes metrics and logs |
 
 Runtime boundaries, contracts, and configuration ownership are documented in
 [`docs/container-service-boundaries.md`](docs/container-service-boundaries.md) and
@@ -47,7 +47,7 @@ Runtime boundaries, contracts, and configuration ownership are documented in
 - **Calendar:** Cal.com (booking availability + appointments)
 - **Search:** faiss-cpu + a custom RAG engine
 - **Frontend:** React 18, TypeScript, Vite, lucide-react, pdfjs-dist
-- **Observability:** OpenTelemetry SDK/OTLP, Prometheus, Loki, Jaeger, Grafana
+- **Observability:** OpenTelemetry SDK/OTLP, Prometheus, Loki, Grafana
 - **Deployment:** Docker Compose, multi-stage Dockerfiles, git
 
 ## Repository Layout
@@ -74,7 +74,7 @@ Runtime boundaries, contracts, and configuration ownership are documented in
 ├── docker-compose.redis.yml    # Redis-only stack
 ├── supervisord.conf            # Legacy all-in-one process manager
 ├── SERVICE_CONTRACTS.yaml      # Service-level contracts
-└── otel-collector-config.yaml  # OTLP -> Prometheus / Loki / Jaeger
+└── otel-collector-config.yaml  # OTLP metrics/logs -> Prometheus / Loki
 ```
 
 ## Prerequisites
@@ -187,7 +187,7 @@ into the agent's room; outbound calls are dialed through `LIVEKIT_SIP_OUTBOUND_T
 ## Observability
 
 All services emit OTLP to the `otel-collector`, which fans out logs to **Loki**, metrics to
-**Prometheus**, and traces to **Jaeger**, all visualized in **Grafana** (auto-provisioned):
+**Prometheus**, with structured logs sent to **Loki**, all visualized in **Grafana** (auto-provisioned):
 
 - FastAPI: metrics (`/metrics`), request spans, request/trace ID headers
 - Voice agent: call-correlated spans and metrics

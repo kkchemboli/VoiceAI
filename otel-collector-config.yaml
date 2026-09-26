@@ -14,28 +14,6 @@ processors:
   resourcedetection:
     detectors: [env, system]
     timeout: 10s
-  tail_sampling:
-    decision_wait: 30s
-    num_traces: 100000
-    expected_new_trace_rate: 30
-    policies:
-      - name: errors-and-call-traces
-        type: composite
-        composite:
-          max_total_spans: 20000
-          policy_order: [errors, call-traces]
-          subm_policy:
-            - name: errors
-              type: status_code
-              status_code:
-                codes: [ERROR]
-            - name: call-traces
-              type: string_attribute
-              string_attribute:
-                key: call.id
-                values: ["true"]
-                enabled_regex_matching: true
-                cache_max_size: 10000
   batch:
     send_batch_size: 1024
     timeout: 5s
@@ -56,10 +34,6 @@ exporters:
     endpoint: 0.0.0.0:8889
     resource_to_telemetry_conversion:
       enabled: true
-  otlp/jaeger:
-    endpoint: jaeger:4317
-    tls:
-      insecure: true
 
 extensions:
   health_check:
@@ -80,7 +54,3 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, resourcedetection, batch]
       exporters: [prometheus]
-    traces:
-      receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, tail_sampling, batch]
-      exporters: [otlp/jaeger]

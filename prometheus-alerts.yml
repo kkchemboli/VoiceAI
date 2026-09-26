@@ -12,7 +12,7 @@ groups:
       # 1. Canary: has the fleet emitted ANY signal at all?
       #    - If the collector hasn't scraped a health-check target, or
       #    - if Prometheus can't see the single scrape target
-      #    ...the whole stack may be down with no trace to show. This is the one
+      #    ...the whole stack may be down with no metric or log signal. This is the one
       #    alert you want even when everything else went silent.
       - alert: VoiceStackSilent
         expr: |
@@ -23,10 +23,9 @@ groups:
           severity: critical
         annotations:
           summary: "No telemetry signal from the stack"
-          description: "The OTel collector / Prometheus scrape is not reporting, or the fleet is completely silent. If a call was in progress, its trace is likely lost — check the last persisted call record."
+          description: "The OTel collector / Prometheus scrape is not reporting, or the fleet is completely silent. Check the last persisted call record and Loki logs."
 
-      # 2. Collector (the link to Jaeger) is down — the *last-call* trace is the
-      #    only thing this stack stores, so losing the collector means losing that.
+      # 2. Collector is down — metrics and structured logs cannot be exported.
       - alert: OTelCollectorDown
         expr: up{job="otel-collector"} == 0
         for: 1m
@@ -34,7 +33,7 @@ groups:
           severity: critical
         annotations:
           summary: "otel-collector is not running"
-          description: "The OpenTelemetry Collector is down. Traces from the active call cannot reach Jaeger, so the last-call trace will be blank — view the call's logs in Loki instead."
+          description: "The OpenTelemetry Collector is down. Metrics and structured logs cannot be exported; inspect the persisted call record and service output."
 
       # 3. API 5xx rate above 5% (series: http_requests_5xx_total / http_requests_total — real)
       - alert: BackendHigh5xxRate
@@ -47,7 +46,7 @@ groups:
           severity: warning
         annotations:
           summary: "API 5xx rate above 5%"
-          description: "{{ $value | humanizePercentage }} of HTTP requests returned 5xx in the last 5 min. Open the 5xx trace in Jaeger."
+          description: "{{ $value | humanizePercentage }} of HTTP requests returned 5xx in the last 5 min. Inspect correlated Loki logs using the request ID."
 
       # 4. API p95 latency above 3s (real histogram: http_request_duration_ms)
       - alert: HttpLatencyHigh
@@ -72,7 +71,7 @@ groups:
           severity: warning
         annotations:
           summary: "Voice call error rate above 10%"
-          description: "{{ $value | humanizePercentage }} of outbound calls errored in the last 5 min. That failing call is the one preserved — open its trace in Jaeger."
+          description: "{{ $value | humanizePercentage }} of outbound calls errored in the last 5 min. Inspect the persisted call record and correlated Loki logs."
 
       # 6. Pending (backlog) calls stuck — the dispatcher's real gauge (voice_calls_pending_total).
       #    A backlog here == calls not being claimed because the worker crashed.
@@ -83,4 +82,4 @@ groups:
           severity: warning
         annotations:
           summary: "Outbound call backlog above 20"
-          description: "{{ $value }} calls are stuck pending — the celery worker likely crashed. Their last call traces are preserved for inspection in Jaeger."
+          description: "{{ $value }} calls are stuck pending — the celery worker likely crashed. Inspect Celery worker logs and the persisted call records."

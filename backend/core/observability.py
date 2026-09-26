@@ -148,30 +148,25 @@ metrics = Metrics()
 
 
 def configure_otel(service_name: str) -> None:
-    """Enable OTLP logs, metrics, and traces when an endpoint is configured."""
+    """Enable OTLP logs and metrics when an endpoint is configured.
+
+    Trace export is deliberately configured by the tracing backend integration,
+    rather than this shared runtime setup.  This keeps metrics/log export usable
+    when no trace backend is deployed.
+    """
     endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
     if not endpoint:
         return
     try:
-        from opentelemetry import metrics as otel_metrics, trace
+        from opentelemetry import metrics as otel_metrics
         from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
         from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
-        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
         from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
         from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
         from opentelemetry.sdk.metrics import MeterProvider
         from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
         from opentelemetry.sdk.resources import Resource
-        from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor
-
         resource = Resource.create({"service.name": service_name})
-        tracer_provider = TracerProvider(resource=resource)
-        tracer_provider.add_span_processor(
-            BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, insecure=True))
-        )
-        trace.set_tracer_provider(tracer_provider)
-
         meter_provider = MeterProvider(
             resource=resource,
             metric_readers=[
