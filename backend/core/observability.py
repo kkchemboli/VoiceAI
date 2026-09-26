@@ -197,6 +197,40 @@ def configure_otel(service_name: str) -> None:
     install_instrumentation()
 
 
+def configure_otel_tracing(service_name: str) -> Any:
+    """Configure an OTLP trace provider only for a service that opts in.
+
+    The collector performs tail-based sampling, so the SDK must create every
+    span and let the collector decide which complete traces to retain.
+    """
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+    enabled = os.getenv("OTEL_TRACES_ENABLED", "false").lower() in {"1", "true", "yes"}
+    if not endpoint or not enabled:
+        return None
+    try:
+        from opentelemetry import trace
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+        provider = TracerProvider(resource=Resource.create({"service.name": service_name}))
+        provider.add_span_processor(
+            BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, insecure=True))
+        )
+        trace.set_tracer_provider(provider)
+        logging.getLogger("observability").info(
+            "OpenTelemetry trace export enabled",
+            extra={"otel_endpoint": endpoint, "service_name": service_name},
+        )
+        return provider
+    except ImportError:
+        logging.getLogger("observability").warning(
+            "OTEL_TRACES_ENABLED is set but OpenTelemetry trace packages are unavailable"
+        )
+        return None
+
+
 def install_instrumentation() -> None:
     """Apply optional OpenTelemetry auto-instrumentation for the I/O libraries in use."""
     try:

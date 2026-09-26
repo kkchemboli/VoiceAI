@@ -19,7 +19,7 @@ OpenTelemetry observability stack.
 - **RAG knowledge engine** — answers grounded in local TXT/PDF files, Google Sheets, and a Supabase knowledge base.
 - **Automatic call summaries** — delivered to Telegram, WhatsApp (admin + customer), and stored as call logs.
 - **Admin panel** — dashboard, call logs, knowledge base editor, calendar, agent prompt configuration, and outbound campaign controls.
-- **Observable by design** — OpenTelemetry logs and metrics exported to Loki and Prometheus, visualized in Grafana.
+- **Observable by design** — OpenTelemetry metrics/logs go to Prometheus/Loki; failed voice-agent traces, including LLM and tool context, go to Langfuse.
 
 ## Architecture
 
@@ -31,8 +31,8 @@ OpenTelemetry observability stack.
 | `celery-beat` | Celery beat | Periodic dispatcher that enqueues pending calls inside the calling window |
 | `redis` | Redis 7 | Celery broker, short-lived coordination state, distributed bulk-import lock |
 | `frontend` | Nginx + static build | React/Vite admin panel; proxies `/api` to the `api` service |
-| `otel-collector` | OpenTelemetry collector | Receives OTLP metrics and logs, fans out to Prometheus and Loki |
-| `prometheus` / `loki` | Metrics and logs stores | Backends for the dashboards |
+| `otel-collector` | OpenTelemetry collector | Receives OTLP, fans out to Prometheus, Loki, and error-only Langfuse traces |
+| `prometheus` / `loki` / `langfuse` | Metrics, logs, LLM trace stores | Observability backends |
 | `grafana` | Dashboards | Visualizes metrics and logs |
 
 Runtime boundaries, contracts, and configuration ownership are documented in
@@ -47,7 +47,7 @@ Runtime boundaries, contracts, and configuration ownership are documented in
 - **Calendar:** Cal.com (booking availability + appointments)
 - **Search:** faiss-cpu + a custom RAG engine
 - **Frontend:** React 18, TypeScript, Vite, lucide-react, pdfjs-dist
-- **Observability:** OpenTelemetry SDK/OTLP, Prometheus, Loki, Grafana
+- **Observability:** OpenTelemetry SDK/OTLP, Prometheus, Loki, Langfuse, Grafana
 - **Deployment:** Docker Compose, multi-stage Dockerfiles, git
 
 ## Repository Layout
@@ -74,7 +74,7 @@ Runtime boundaries, contracts, and configuration ownership are documented in
 ├── docker-compose.redis.yml    # Redis-only stack
 ├── supervisord.conf            # Legacy all-in-one process manager
 ├── SERVICE_CONTRACTS.yaml      # Service-level contracts
-└── otel-collector-config.yaml  # OTLP metrics/logs -> Prometheus / Loki
+└── otel-collector-config.yaml  # OTLP -> Prometheus / Loki / Langfuse (errors)
 ```
 
 ## Prerequisites
@@ -104,6 +104,7 @@ Copy `backend/.env.example` to `backend/.env` and fill in the values:
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Call summary reports |
 | `REDIS_URL` | Celery broker (default `redis://localhost:6379/0`) |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated browser origins allowed to call the API |
+| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL` | Langfuse project credentials and region/self-hosted URL for voice-agent traces |
 
 Secrets are injected at runtime only; they are never baked into images or committed.
 
@@ -186,12 +187,17 @@ into the agent's room; outbound calls are dialed through `LIVEKIT_SIP_OUTBOUND_T
 
 ## Observability
 
-All services emit OTLP to the `otel-collector`, which fans out logs to **Loki**, metrics to
-**Prometheus**, with structured logs sent to **Loki**, all visualized in **Grafana** (auto-provisioned):
+All services emit OTLP to the `otel-collector`, which sends logs to **Loki** and metrics to
+**Prometheus**. The voice agent also emits LiveKit session, LLM, tool, and call spans; the collector
+stores a complete trace in **Langfuse** only when that trace contains an error. Grafana visualizes the
+Prometheus and Loki signals.
 
-- FastAPI: metrics (`/metrics`), request spans, request/trace ID headers
-- Voice agent: call-correlated spans and metrics
-- Celery: task spans and metrics (started count, sample counters)
+The error-only policy is tail-based: traces are retained in the collector for up to 15 minutes before
+the decision, so a failure late in an active call still retains its complete diagnostic context.
+
+- FastAPI: metrics (`/metrics`) and request ID headers
+- Voice agent: call-correlated LLM traces in Langfuse when an error occurs, plus metrics
+- Celery: task metrics (started count, sample counters)
 
 ## API Overview
 

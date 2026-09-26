@@ -15,6 +15,7 @@ from services.calendar_api import CalComCalendar, FakeCalendar
 from tools.transfer_functions import TransferFunctions
 
 from livekit.agents import AutoSubscribe, JobContext, JobProcess, WorkerOptions, cli, llm
+from livekit.agents.telemetry import set_tracer_provider
 from livekit.agents.voice import AgentSession
 from livekit.agents.voice.events import (
     UserInputTranscribedEvent,
@@ -31,6 +32,7 @@ from core.observability import (
     attach_otel_context,
     configure_logging,
     configure_otel,
+    configure_otel_tracing,
     detach_otel_context,
     extract_otel_context,
     init_sentry,
@@ -61,6 +63,12 @@ apply_audio_patches()
 logger = logging.getLogger("voice-agent")
 configure_logging("voice-agent")
 configure_otel("voice-agent")
+otel_tracer_provider = configure_otel_tracing("voice-agent")
+if otel_tracer_provider is not None:
+    # LiveKit emits the LLM, tool, turn, and session spans. Give it the same
+    # provider that exports to the collector so Langfuse receives a complete
+    # voice-agent trace after collector sampling.
+    set_tracer_provider(otel_tracer_provider)
 init_sentry("voice-agent")
 
 OPENAI_LLM_MODEL = settings.openai_llm_model
@@ -116,6 +124,33 @@ async def entrypoint(ctx: JobContext):
             }
         )
     )
+    call_trace = None
+    call_trace_token = None
+    if otel_tracer_provider is not None:
+        from opentelemetry import context as otel_context, trace
+
+        call_trace = trace.get_tracer("voice-agent").start_span("voice.call")
+        call_trace.set_attribute("langfuse.observation.type", "agent")
+        call_trace.set_attribute("langfuse.observation.name", "voice.call")
+        call_trace.set_attribute("langfuse.session.id", ctx.room.name)
+        call_trace.set_attribute("call.id", str(job_meta.get("callId") or "-"))
+        call_trace.set_attribute("room.id", ctx.room.name)
+        call_trace_token = otel_context.attach(trace.set_span_in_context(call_trace))
+
+    def finish_call_trace(error: Exception | None = None) -> None:
+        if call_trace is not None:
+            if error is not None:
+                from opentelemetry.trace import Status, StatusCode
+
+                call_trace.record_exception(error)
+                call_trace.set_status(Status(StatusCode.ERROR, str(error)))
+            call_trace.end()
+        if call_trace_token is not None:
+            from opentelemetry import context as otel_context
+
+            otel_context.detach(call_trace_token)
+        detach_otel_context(otel_token)
+
     metrics.increment("voice_calls_started_total")
 
     logger.info("Job assigned to voice worker", extra={"room_name": ctx.room.name})
@@ -163,6 +198,7 @@ async def entrypoint(ctx: JobContext):
                 logger.error(f"RAG: Initialization failed: {type(e).__name__}: {e}")
     except Exception as e:
         logger.exception("Voice connection failed")
+        finish_call_trace(e)
         return
 
     agent_config = await fetch_agent_config_from_supabase()
@@ -451,6 +487,7 @@ async def entrypoint(ctx: JobContext):
         logger.error(f"Error in autocut monitor: {e}")
     finally:
         logger.info("Room disconnected or autocut triggered - Entrypoint exiting.")
+        finish_call_trace()
 
 
 if __name__ == "__main__":

@@ -14,6 +14,18 @@ processors:
   resourcedetection:
     detectors: [env, system]
     timeout: 10s
+  # Export only full traces that contain an error. A voice call can remain
+  # active for several minutes, so retain the in-flight trace long enough for
+  # a late failure to be observed before the sampling decision is made.
+  tail_sampling:
+    decision_wait: 15m
+    num_traces: 20000
+    expected_new_trace_rate: 5
+    policies:
+      - name: errors
+        type: status_code
+        status_code:
+          status_codes: [ERROR]
   batch:
     send_batch_size: 1024
     timeout: 5s
@@ -34,8 +46,18 @@ exporters:
     endpoint: 0.0.0.0:8889
     resource_to_telemetry_conversion:
       enabled: true
+  otlphttp/langfuse:
+    endpoint: ${env:LANGFUSE_BASE_URL}/api/public/otel
+    auth:
+      authenticator: basicauth/langfuse
+    headers:
+      x-langfuse-ingestion-version: "4"
 
 extensions:
+  basicauth/langfuse:
+    client_auth:
+      username: ${env:LANGFUSE_PUBLIC_KEY}
+      password: ${env:LANGFUSE_SECRET_KEY}
   health_check:
     endpoint: 0.0.0.0:13133
   pprof:
@@ -54,3 +76,7 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, resourcedetection, batch]
       exporters: [prometheus]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, tail_sampling, batch]
+      exporters: [otlphttp/langfuse]

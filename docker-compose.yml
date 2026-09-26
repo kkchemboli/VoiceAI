@@ -60,6 +60,10 @@ services:
       GROQ_LLM_MODEL: ${GROQ_LLM_MODEL:-}
       GOOGLE_SHEET_URL: ${GOOGLE_SHEET_URL:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_TRACES_ENABLED: "true"
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-https://cloud.langfuse.com}
     # healthcheck is the one truth compos can check WITHOUT the colon
     # The agent binds its OWN health server on loopback :9011 (see agent.py
     # __main__ -> start_health_server(HEALTH_PORT default 9011)). Probe THAT
@@ -176,6 +180,10 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.131.0
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    environment:
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-https://cloud.langfuse.com}
     volumes:
       - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
     depends_on:
