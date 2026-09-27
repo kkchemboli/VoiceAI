@@ -505,6 +505,28 @@ if __name__ == "__main__":
         "Starting voice-agent service with model=%s; service is ready for independent scaling.",
         OPENAI_LLM_MODEL,
     )
+    # Worker capacity, and how it actually behaves.
+    #
+    # WorkerOptions is an alias for ServerOptions in livekit-agents 1.5.x, and
+    # that dataclass has no max_concurrent_jobs. Concurrency works like this:
+    #
+    #   * job_executor_type defaults to PROCESS on Linux, so each call runs in
+    #     its own child process and ctx.proc.userdata is per process.
+    #   * num_idle_processes is the WARM POOL SIZE, not a cap. The pool spawns
+    #     beyond it on demand. Keeping it warm means a burst does not pay
+    #     process spawn plus prewarm on the first calls.
+    #   * There is no fixed ceiling. Load is sampled from CPU and compared to
+    #     load_threshold; above it the worker reports itself unavailable and
+    #     LiveKit routes calls elsewhere. So the real ceiling is CPU, and
+    #     raising the pool size past saturation just deepens the queue.
+    #
+    # To scale beyond one pod, add replicas rather than raising this number.
+    logger.info(
+        "Voice worker capacity: num_idle_processes=%d (warm pool), load_threshold=%.2f "
+        "(CPU admission control, no hard cap)",
+        settings.voice_num_idle_processes,
+        settings.voice_load_threshold,
+    )
     metrics.increment("voice_agent_starts_total")
     start_health_server(port=int(os.getenv("HEALTH_PORT", "9011")))
 
@@ -513,5 +535,7 @@ if __name__ == "__main__":
             agent_name="outbound_caller",
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
+            num_idle_processes=settings.voice_num_idle_processes,
+            load_threshold=settings.voice_load_threshold,
         )
     )

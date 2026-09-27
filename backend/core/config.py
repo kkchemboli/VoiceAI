@@ -18,6 +18,20 @@ def _optional_int(value: Optional[str]) -> Optional[int]:
         return None
 
 
+def _int_or(value: Optional[str], fallback: int) -> int:
+    parsed = _optional_int(value)
+    return fallback if parsed is None else parsed
+
+
+def _float_or(value: Optional[str], fallback: float) -> float:
+    if not value:
+        return fallback
+    try:
+        return float(value)
+    except ValueError:
+        return fallback
+
+
 @dataclass(frozen=True)
 class Settings:
     timezone: str
@@ -39,6 +53,11 @@ class Settings:
     sarvam_api_key: Optional[str]
     groq_api_key: Optional[str]
     groq_llm_model: Optional[str]
+    # LiveKit worker capacity. livekit-agents 1.5.x has no hard concurrency cap:
+    # num_idle_processes is the size of the warm job-process pool, and load
+    # beyond that is shed by CPU-based admission control at load_threshold.
+    voice_num_idle_processes: int
+    voice_load_threshold: float
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -66,6 +85,10 @@ class Settings:
             sarvam_api_key=os.getenv("SARVAM_API_KEY"),
             groq_api_key=os.getenv("GROQ_API_KEY"),
             groq_llm_model=os.getenv("GROQ_LLM_MODEL"),
+            voice_num_idle_processes=max(
+                0, _int_or(os.getenv("VOICE_NUM_IDLE_PROCESSES"), 4)
+            ),
+            voice_load_threshold=_float_or(os.getenv("VOICE_LOAD_THRESHOLD"), 0.7),
         )
 
 
