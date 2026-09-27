@@ -306,7 +306,7 @@ class RAGEngine:
             if cached is not None:
                 metrics.increment("rag_redis_cache_hits_total")
                 logger.info("RAG: reused cached embeddings for %s", new_hash[:8])
-                await asyncio.to_thread(self._adopt, chunks, cached, new_hash, digest)
+                await asyncio.to_thread(self._adopt, *cached, new_hash, digest)
                 return
 
             vectors = await self._build_guarded(docs, chunks, new_hash, digest)
@@ -361,7 +361,7 @@ class RAGEngine:
             if cached is not None:
                 metrics.increment("rag_redis_cache_hits_total")
                 logger.info("RAG: another process built %s while we waited", new_hash[:8])
-                await asyncio.to_thread(self._adopt, chunks, cached, new_hash, digest)
+                await asyncio.to_thread(self._adopt, *cached, new_hash, digest)
                 return None
 
         try:

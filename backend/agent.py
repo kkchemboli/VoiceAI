@@ -10,7 +10,7 @@ import os
 import time
 from typing import Optional
 
-from rag import RAGEngine
+from rag import RAGEngine, KnowledgeDoc
 from services.calendar_api import CalComCalendar, FakeCalendar
 from tools.transfer_functions import TransferFunctions
 
@@ -173,34 +173,13 @@ async def entrypoint(ctx: JobContext):
         openai_api_key = settings.openai_api_key
         if openai_api_key and "rag" not in ctx.proc.userdata:
             try:
-                rag = RAGEngine(openai_api_key=openai_api_key)
-
-                base_dir = os.path.dirname(os.path.abspath(__file__))
-                data_dir = os.path.join(base_dir, "data")
-                search_dirs = [data_dir, base_dir]
-                kb_files = []
-                for d in search_dirs:
-                    if os.path.exists(d):
-                        for f in os.listdir(d):
-                            if f.endswith((".txt", ".pdf")) and f != "requirements.txt":
-                                kb_files.append(os.path.join(d, f))
-                logger.debug(f"RAG: Detected {len(kb_files)} knowledge files: {kb_files}")
-
-                if kb_files:
-                    try:
-                        await rag.load_knowledge(kb_files)
-                        logger.info(f"RAG: Indexed {len(kb_files)} local files (TXT/PDF).")
-                    except Exception as e:
-                        logger.error(f"RAG: Failed to load knowledge files: {type(e).__name__}: {e}")
-
-                if sheet_url := os.getenv("GOOGLE_SHEET_URL"):
-                    try:
-                        await rag.load_knowledge_from_sheet(sheet_url)
-                    except Exception as e:
-                        logger.error(f"RAG: Failed to load Google Sheet ({e}), continuing without it.")
-
-                ctx.proc.userdata["rag"] = rag
-                logger.info("Knowledge engine loaded successfully")
+                # Construction is per-process and idempotent. The knowledge
+                # content itself is loaded per call from Supabase further down,
+                # so an admin edit takes effect on the next call without a
+                # restart and without this block needing to know where the
+                # content comes from.
+                ctx.proc.userdata["rag"] = RAGEngine(openai_api_key=openai_api_key)
+                logger.info("Knowledge engine initialised for this process")
             except Exception as e:
                 logger.error(f"RAG: Initialization failed: {type(e).__name__}: {e}")
     except Exception as e:
@@ -264,14 +243,23 @@ async def entrypoint(ctx: JobContext):
         greeting_text = agent_config.get("opening_greeting", DEFAULT_GREETING)
 
 
-    knowledge_texts = agent_config["knowledge_texts"]
+    # Reconcile the live index with what is actually in Supabase right now.
+    # ensure_index is idempotent: in the overwhelmingly common case where
+    # nothing changed this is one hash and one string compare, with no OpenAI
+    # call and no Redis round trip. An admin edit is picked up on the very next
+    # call, so no TTL or periodic invalidation is needed.
+    knowledge_docs = [
+        KnowledgeDoc(language=d.get("language") or "en", content=d["content"])
+        for d in agent_config.get("knowledge_docs", [])
+        if d.get("content")
+    ]
     rag_engine: Optional[RAGEngine] = ctx.proc.userdata.get("rag")
-    if knowledge_texts and rag_engine:
-        try:
-            await rag_engine.load_knowledge_from_text(knowledge_texts)
-            logger.info(f"RAG engine loaded with {len(knowledge_texts)} knowledge sources from Supabase")
-        except Exception as e:
-            logger.error(f"Failed to load knowledge from Supabase: {e}")
+    if knowledge_docs and rag_engine:
+        await rag_engine.ensure_index(knowledge_docs)
+        logger.info(
+            f"RAG index reconciled: {len(knowledge_docs)} source(s), "
+            f"{rag_engine.chunk_count} chunks, fp={rag_engine.kb_hash}"
+        )
 
     initial_ctx = llm.ChatContext()
     initial_ctx.add_message(role="system", content=system_prompt)

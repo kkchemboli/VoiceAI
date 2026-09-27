@@ -14,7 +14,7 @@ async def fetch_agent_config_from_supabase():
         return {
             "system_prompt": DEFAULT_SYSTEM_PROMPT,
             "opening_greeting": DEFAULT_GREETING,
-            "knowledge_texts": [],
+            "knowledge_docs": [],
         }
 
     try:
@@ -23,7 +23,7 @@ async def fetch_agent_config_from_supabase():
             "opening_greeting": DEFAULT_GREETING,
             "outbound_system_prompt": "",  # Empty by default to trigger fallback
             "outbound_opening_greeting": "",
-            "knowledge_texts": [],
+            "knowledge_docs": [],
         }
 
         try:
@@ -39,12 +39,19 @@ async def fetch_agent_config_from_supabase():
         except Exception as e:
             logger.error(f"Error fetching config from agent_config table: {e}")
 
+        # `content` and `language` only. `updated_at` exists (verified
+        # 2026-09-27) and is left unselected on purpose: this repo does not
+        # create or migrate the table, and one unknown column fails the whole
+        # PostgREST query, which would blind the agent rather than drop a field.
         knowledge_response = await execute_query(
-            supabase.table("knowledge_base").select("content")
+            supabase.table("knowledge_base").select("content, language")
         )
         if knowledge_response.data:
-            config["knowledge_texts"] = [
-                item["content"]
+            config["knowledge_docs"] = [
+                {
+                    "language": (item.get("language") or "en"),
+                    "content": item["content"],
+                }
                 for item in knowledge_response.data
                 if item.get("content")
             ]
@@ -56,7 +63,7 @@ async def fetch_agent_config_from_supabase():
         return {
             "system_prompt": DEFAULT_SYSTEM_PROMPT,
             "opening_greeting": DEFAULT_GREETING,
-            "knowledge_texts": [],
+            "knowledge_docs": [],
         }
 
 
