@@ -194,6 +194,14 @@ currently writes errors in that shape.
   caches rebuilt on demand, and `config:google_sheet_url` is a copy of a value an
   operator can re-set. Flushing all of them costs embedding calls, not data.
 - Flush is **not** safe for broker state: the Celery queue lives here too.
+- Runs with `cap_drop: ALL` plus `cap_add: [SETUID, SETGID]`, and the pair is
+  load-bearing. The `redis:7-alpine` entrypoint starts as root and drops to the
+  `redis` user with `setpriv` before exec'ing the server; without those two
+  capabilities the drop fails and the container exits 127, crash-looping on
+  restart. Do not remove `cap_add` as redundant against `cap_drop: ALL`. The
+  server holds none of them once running: it is PID 1 as user `redis` with
+  `CapEff` of 0, so its effective capability set is empty, and
+  `no-new-privileges` keeps it from regaining what it dropped.
 - Uses a managed Redis service in production where available.
 
 ### `frontend`

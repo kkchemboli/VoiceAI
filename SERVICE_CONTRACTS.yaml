@@ -263,6 +263,14 @@ services:
       - "rag:index:*"
       - "rag:build:*"
       - "config:google_sheet_url"
+    container_hardening:
+      # The redis:7-alpine entrypoint starts as root and drops to the redis user
+      # with setpriv. cap_drop: ALL without these two capabilities makes that drop
+      # fail, and redis exits 127 in a crash loop. They are consumed by the
+      # entrypoint: the server runs as PID 1, user redis, with CapEff 0.
+      cap_drop: [ALL]
+      cap_add: [SETUID, SETGID]
+      no_new_privileges: true
 
 identifiers:
   request_id: HTTP request correlation
