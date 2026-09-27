@@ -1,0 +1,61 @@
+# Without this file, `COPY backend/ ./` bakes backend/.env into the image layer.
+# That file holds 25+ real secrets (LIVEKIT_API_SECRET, OPENAI_API_KEY,
+# SUPABASE_KEY, VOBIZ_SIP_PASSWORD, ZIPER_ACCESS_TOKEN, ...). Anyone who can
+# pull the image, or read `docker history`, recovers all of them. It also bloats
+# the build context with 200MB+ of node_modules and .venv that no image needs.
+
+# Secrets and local environment
+.env
+.env.*
+**/.env
+**/.env.*
+*.pem
+*.key
+**/secrets/
+
+# Version control
+.git
+.gitignore
+.github/
+
+# Python
+.venv
+venv/
+env/
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / frontend: the backend image never needs it, and node_modules is ~150MB
+node_modules/
+**/node_modules/
+frontend/dist/
+**/.vite/
+
+# Runtime state and caches: rebuilt on boot, must never be baked in
+backend/data/
+**/runtime_config.json
+**/*.npy
+**/*.pkl
+**/*.faiss
+**/*.log
+
+# Local tooling / editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Docs and infra assets not required at runtime
+docs/
+*.md
+!backend/**/*.md
+
+# Tests and scratch space
+tests/
+**/tests/
+tmp/

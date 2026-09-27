@@ -47,7 +47,7 @@ async def run_bulk_dialer():
     Each validated row is inserted as a 'pending' outbound call and the
     created call_id is returned so the caller can enqueue that call's task.
     """
-    sheet_url = get_sheet_url()
+    sheet_url = await get_sheet_url()
     if not sheet_url:
         logger.error("GOOGLE_SHEET_URL not found in runtime configuration!")
         logger.error("Set the Google Sheet URL from the admin panel, or provide GOOGLE_SHEET_URL in the .env file")

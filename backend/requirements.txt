@@ -65,10 +65,15 @@ opentelemetry-exporter-otlp==1.39.1
 opentelemetry-exporter-otlp-proto-common==1.39.1
 opentelemetry-exporter-otlp-proto-grpc==1.39.1
 opentelemetry-exporter-otlp-proto-http==1.39.1
-opentelemetry-instrumentation-celery==0.60b0
-opentelemetry-instrumentation-httpx==0.60b0
-opentelemetry-instrumentation-redis==0.60b0
-opentelemetry-instrumentation-requests==0.60b0
+# The four 0.60bN instrumentation lines and opentelemetry-semantic-conventions
+# are one coupled group and must be bumped together. Both sides pin semconv with
+# '==': opentelemetry-sdk 1.39.1 requires 0.60b1, while instrumentation 0.60b0
+# requires 0.60b0. Any mix is unresolvable, so a partial bump breaks the image
+# build rather than degrading quietly.
+opentelemetry-instrumentation-celery==0.60b1
+opentelemetry-instrumentation-httpx==0.60b1
+opentelemetry-instrumentation-redis==0.60b1
+opentelemetry-instrumentation-requests==0.60b1
 opentelemetry-proto==1.39.1
 opentelemetry-sdk==1.39.1
 opentelemetry-semantic-conventions==0.60b1

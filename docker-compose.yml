@@ -52,6 +52,10 @@ services:
       OPENAI_LLM_MODEL: ${OPENAI_LLM_MODEL:-gpt-4.1-mini}
       SUPABASE_URL: ${SUPABASE_URL:-}
       SUPABASE_KEY: ${SUPABASE_KEY:-}
+      # Required by the RAG engine: cross-process index cache + build lock.
+      REDIS_URL: redis://redis:6379/0
+      VOICE_NUM_IDLE_PROCESSES: ${VOICE_NUM_IDLE_PROCESSES:-4}
+      VOICE_LOAD_THRESHOLD: ${VOICE_LOAD_THRESHOLD:-0.7}
       CAL_API_KEY: ${CAL_API_KEY:-}
       CAL_EVENT_ID: ${CAL_EVENT_ID:-}
       DEFAULT_TRANSFER_NUMBER: ${DEFAULT_TRANSFER_NUMBER:-}
@@ -78,6 +82,9 @@ services:
       timeout: 3s
       retries: 3
       start_period: 10s
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - backend
 

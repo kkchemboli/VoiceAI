@@ -6,6 +6,13 @@ server:
 common:
   path_prefix: /loki
   replication_factor: 1
+  # Single-binary Loki: the distributor, ingester and querier are one process, so
+  # the ingester must advertise a loopback address it can actually be dialled on.
+  # Without this it registers with the container IP, the distributor's ring client
+  # marks that instance unhealthy, and every OTLP write is refused with
+  # "at least 1 live replicas required, could only find 0". That silently kills
+  # the whole log pipeline.
+  instance_addr: 127.0.0.1
   ring:
     kvstore:
       store: inmemory

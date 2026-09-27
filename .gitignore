@@ -11,5 +11,4 @@ __pycache__/
 *.log
 tmp/
 llogs.txt
-backend/data/runtime_config.json
 

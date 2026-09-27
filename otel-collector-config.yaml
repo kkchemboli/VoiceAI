@@ -26,14 +26,17 @@ processors:
     timeout: 3s
 
 exporters:
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
-    default_labels_enabled:
-      exporter: true
-      job: true
-      service: true
-    tenant:
-      context_key: com.splunk.sourcetype
+  # Loki's own "loki" exporter was removed from opentelemetry-collector-contrib,
+  # so referencing it made the collector refuse to start (and took the entire
+  # trace/metric/log pipeline with it). Loki 3.x ingests OTLP natively, so send
+  # logs to its OTLP endpoint instead; the otlphttp exporter appends /v1/logs.
+  # Loki promotes service.name / service.namespace / service.instance.id to
+  # labels by default, which is what the old default_labels_enabled was reaching
+  # for. The previous tenant.context_key (com.splunk.sourcetype) was a Splunk
+  # artifact and is dropped: this Loki runs with auth_enabled: false, so tenancy
+  # does not apply.
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
   prometheus:
     endpoint: 0.0.0.0:8889
     resource_to_telemetry_conversion:
@@ -58,12 +61,16 @@ extensions:
     endpoint: 0.0.0.0:55679
 
 service:
-  extensions: [health_check, pprof, zpages]
+  # basicauth/langfuse must be listed here. The otlphttp/langfuse exporter
+  # references it as an authenticator, and an extension that is declared but not
+  # listed under service.extensions is never instantiated -- so the collector
+  # failed to start with 'authenticator basicauth/langfuse not found'.
+  extensions: [basicauth/langfuse, health_check, pprof, zpages]
   pipelines:
     logs:
       receivers: [otlp]
       processors: [memory_limiter, resourcedetection, batch/logs]
-      exporters: [loki]
+      exporters: [otlphttp/loki]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, resourcedetection, batch]

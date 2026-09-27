@@ -1,63 +1,66 @@
-"""Runtime-editable configuration persisted outside of `.env`.
+"""Runtime-editable configuration persisted in Redis.
 
-The `.env` file holds secrets and must never be mutated from an API endpoint.
-Values that administrators may change at runtime (e.g. the Google Sheet URL)
-are stored in a small JSON file that excludes secrets.
+The environment holds secrets and must never be mutated from an API endpoint.
+Values an administrator may change at runtime (currently the Google Sheet URL)
+live in Redis instead, because a JSON file on a container filesystem is not
+shared between replicas and does not survive a rebuild.
+
+Env always wins over the stored value, so an operator can pin the URL in the
+deployment environment and have the admin panel stop overriding it.
 """
 
-import json
+import asyncio
 import logging
 import os
-import tempfile
+
+import redis
+
+from core.config import settings
 
 logger = logging.getLogger("voice-agent")
 
-_RUNTIME_CONFIG_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "data",
-    "runtime_config.json",
-)
+SHEET_URL_KEY = "config:google_sheet_url"
+
+# decode_responses=True: every value here is text. The RAG index cache needs a
+# separate bytes-mode client because it stores raw float32.
+_redis = redis.from_url(settings.redis_url, decode_responses=True)
+
+_warned = False
 
 
-def _load() -> dict:
+def _warn_once(message: str) -> None:
+    """Redis problems here are degraded, not fatal: never fail a call over it."""
+    global _warned
+    if not _warned:
+        _warned = True
+        logger.warning("runtime config: %s", message)
+
+
+def _get_sync() -> str:
     try:
-        with open(_RUNTIME_CONFIG_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else {}
-    except FileNotFoundError:
-        return {}
-    except (json.JSONDecodeError, OSError) as e:
-        logger.error(f"Failed to read runtime config: {e}")
-        return {}
+        return _redis.get(SHEET_URL_KEY) or ""
+    except Exception as e:
+        _warn_once(f"Redis unavailable, sheet URL falls back to env ({type(e).__name__}: {e})")
+        return ""
 
 
-def _save(data: dict) -> None:
-    os.makedirs(os.path.dirname(_RUNTIME_CONFIG_PATH), exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(
-        dir=os.path.dirname(_RUNTIME_CONFIG_PATH), suffix=".json"
-    )
+def _set_sync(url: str) -> None:
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        os.replace(tmp_path, _RUNTIME_CONFIG_PATH)
-    except Exception:
-        logger.error(f"Failed to persist runtime config: {e}", exc_info=True)
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        _redis.set(SHEET_URL_KEY, url)
+    except Exception as e:
+        _warn_once(f"could not persist sheet URL ({type(e).__name__}: {e})")
 
 
-def get_sheet_url() -> str:
-    """Return the Google Sheet URL: in-memory env first, then persisted runtime config."""
+async def get_sheet_url() -> str:
+    """Return the Google Sheet URL: env first, then the value stored in Redis."""
     url = os.getenv("GOOGLE_SHEET_URL")
     if url:
         return url
-    return _load().get("google_sheet_url", "")
+    return await asyncio.to_thread(_get_sync)
 
 
-def set_sheet_url(url: str) -> None:
+async def set_sheet_url(url: str) -> None:
     """Persist the Google Sheet URL and update the in-memory environment."""
     os.environ["GOOGLE_SHEET_URL"] = url
-    data = _load()
-    data["google_sheet_url"] = url
-    _save(data)
+    await asyncio.to_thread(_set_sync, url)
     logger.info("Google Sheet URL updated in runtime config")

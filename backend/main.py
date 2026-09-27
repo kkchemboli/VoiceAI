@@ -275,7 +275,7 @@ async def get_outbound_queue():
 @app.post("/api/outbound/bulk-dial")
 async def trigger_bulk_dialer():
     """Enqueue the campaign lead import, which inserts leads and dispatches per-call dial tasks."""
-    if not get_sheet_url():
+    if not await get_sheet_url():
         raise HTTPException(
             status_code=400,
             detail="GOOGLE_SHEET_URL is not configured. Set it from the admin panel or provide GOOGLE_SHEET_URL in the .env file.",
@@ -299,7 +299,7 @@ async def update_sheet_url(update: SheetUrlUpdate):
             detail="Only Google Sheets URLs are allowed (https://docs.google.com/spreadsheets/...).",
         )
 
-    set_sheet_url(url)
+    await set_sheet_url(url)
     return {"status": "success", "message": "Google Sheet URL updated and saved."}
 
 
@@ -317,7 +317,7 @@ async def get_knowledge_status():
                 "size": os.path.getsize(os.path.join(base_dir, f))
             })
             
-    sheet_url = get_sheet_url()
+    sheet_url = await get_sheet_url()
     return {
         "files": files,
         "sheet_url": sheet_url,
@@ -546,20 +546,16 @@ async def get_appointments(year: int = None, month: int = None):
 
 @app.get("/api/knowledge")
 async def get_knowledge(lang: str = "en"):
-    """Fetch knowledge base content"""
-    file_map = {"en": "knowledge.txt", "hi": "knowledge_hi.txt"}
-    filename = file_map.get(lang, "knowledge.txt")
-    path = os.path.join(os.path.dirname(__file__), filename)
+    """Fetch knowledge base content.
 
+    Supabase is the only knowledge store. There is no local file mirror: it used
+    to be written on every save and read as a fallback, which meant the agent
+    could be serving a stale on-disk copy instead of what the admin just saved.
+    """
     if not supabase:
-        # Fallback to local files if supabase is missing
-        if os.path.exists(path):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    return {"content": f.read()}
-            except Exception as e:
-                return {"content": "", "error": f"Error reading local file: {e}"}
-        return {"content": f"New knowledge base for {lang}. Start typing to create {filename}."}
+        raise HTTPException(
+            status_code=503, detail="Knowledge store unavailable (Supabase not configured)"
+        )
 
     try:
         response = await execute_query(
@@ -569,12 +565,6 @@ async def get_knowledge(lang: str = "en"):
         )
         if response.data and len(response.data) > 0:
             return {"content": response.data[0]["content"]}
-        
-        # If not in Supabase, try local as a secondary fallback
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                return {"content": f.read()}
-                
         return {"content": ""}
     except Exception as e:
         logger.exception("Error fetching knowledge")
@@ -583,33 +573,26 @@ async def get_knowledge(lang: str = "en"):
 
 @app.post("/api/knowledge/{lang}")
 async def update_knowledge(lang: str, data: KnowledgeUpdate):
-    """Update knowledge base content (Supabase or Local)"""
-    file_map = {"en": "knowledge.txt", "hi": "knowledge_hi.txt"}
-    filename = file_map.get(lang, "knowledge.txt")
-    path = os.path.join(os.path.dirname(__file__), filename)
+    """Update knowledge base content in Supabase.
 
+    Takes effect for the next call: the agent reconciles its index against
+    Supabase on entry, so no restart or cache purge is needed.
+    """
     if not supabase:
-        # Save to local file
-        try:
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(data.content)
-            return {"status": "success", "message": f"Knowledge base ({lang}) saved locally to {filename}"}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to save locally: {e}")
+        raise HTTPException(
+            status_code=503, detail="Knowledge store unavailable (Supabase not configured)"
+        )
 
     try:
-        # Save to Supabase
         await execute_query(
             supabase.table("knowledge_base").upsert(
                 {"language": lang, "content": data.content}, on_conflict="language"
             )
         )
-        
-        # Also sync to local file for agent reliability
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(data.content)
-            
-        return {"status": "success", "message": f"Knowledge base ({lang}) updated in cloud and local sync"}
+        return {
+            "status": "success",
+            "message": f"Knowledge base ({lang}) updated; live on the next call.",
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
