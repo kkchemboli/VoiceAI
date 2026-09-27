@@ -102,11 +102,14 @@ Copy `backend/.env.example` to `backend/.env` and fill in the values:
 | `GOOGLE_SHEET_URL` | Campaign lead sheet (runtime-configurable from the admin panel) |
 | `DEFAULT_TRANSFER_NUMBER` | Number used for warm transfers / admin WhatsApp summary |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Call summary reports |
-| `REDIS_URL` | Celery broker (default `redis://localhost:6379/0`) |
+| `REDIS_URL` | Celery broker, RAG index cache and build lock, runtime config store (default `redis://localhost:6379/0`) |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated browser origins allowed to call the API |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL` | Langfuse project credentials and region/self-hosted URL for voice-agent traces |
 
 Secrets are injected at runtime only; they are never baked into images or committed.
+`.dockerignore` enforces the second half: without it a `COPY . .` in the image
+build would put `backend/.env` into a layer, where deleting the file afterwards
+would not remove the credential.
 
 ## Local Development
 

@@ -63,6 +63,70 @@ services:
       # An admin edit is live on the next call. The only knowledge store is
       # Supabase: there is no local file mirror.
       stale_local_mirror: never
+      # Observed against the live table with the anon key, not inferred. PostgREST
+      # publishes a machine-readable schema at /rest/v1/ but that endpoint needs a
+      # service_role key, so the columns below were confirmed by selecting each
+      # one and watching for a 42703 "column does not exist", against a bogus-column
+      # control that proved the probe could tell absence from success.
+      # Re-verify with the service_role key before trusting it against a new project.
+      verified_against: SUPABASE_URL (project loykpuylgqgjqnqsryjz)
+      verified_on: 2026-09-27
+      verified_with: anon key, RLS-visible columns only
+      table: knowledge_base
+      columns:
+        - name: id
+          readable: true
+        - name: language
+          readable: true
+          unique: true      # required by on_conflict="language" at main.py:591
+        - name: content
+          readable: true
+        - name: updated_at
+          readable: true
+          populated: true
+          selected_by_code: false
+      # updated_at exists and is populated (2026-04-06T16:45:18Z on both rows), so
+      # the earlier claim that it was absent was wrong. It is still deliberately
+      # not selected, for a different reason: nothing in this repo creates or
+      # migrates the table, and PostgREST fails an entire query on one unknown
+      # column, so depending on it trades a verified fact for an unowned schema
+      # dependency. Cache invalidation stays derived from a content fingerprint
+      # rather than a timestamp that can disagree with the content it describes.
+      observed_rows: 2
+      observed_languages: [en, hi]
+      chunking:
+        # One format-agnostic recursive splitter. The previous implementation had
+        # two paths: a regex path for numbered sections with a "Q:" special case,
+        # and a blank-line fallback for everything else. Only the first path
+        # respected the size limit, so an ordinary bullet list fell through to
+        # the fallback and produced 350 chunks from 16413 characters, many of them
+        # bare fragments ("Working Professionals", "- address"). Those fragments
+        # were embedded and retrieved as if they were answers.
+        strategy: recursive separator hierarchy, deepest separator last
+        separators: ["\n\n", "\n", ". ", "? ", "! ", "; ", ", ", " ", ""]
+        min_chars: 100        # soft: a document shorter than this is kept whole
+        max_chars: 500        # hard ceiling
+        overlap_chars: 100    # 20% of max, snapped to a line start, else a word start
+        short_piece_policy: merge into neighbour, never drop
+        format_sniffing: none
+        # Verified on the live knowledge_base content (16413 chars, en + hi).
+        measured:
+          chunks_before: 350
+          chunks_after: 110
+          cold_build_seconds_before: 6.74
+          cold_build_seconds_after: 1.89
+          chunk_length_range: [104, 492]
+          chunks_under_min: 0
+        # Retrieval spot-checks against the rebuilt index. "working hours" now
+        # returns nothing, which is correct: the knowledge base contains no
+        # occurrence of "hours" at all, and the old fragmentary index answered it
+        # with a bare "Working Professionals" heading.
+        retrieval_similarity_threshold: 0.30
+        observed_similarities:
+          "kaha jana hai address": 0.541
+          "fees kya hai": 0.439
+          "kya mujhe appointment mil sakte hain?": 0.402
+          "what are the working hours?": 0.288   # below threshold, correctly not found
 
   celery-worker:
     protocol: redis-celery
@@ -99,13 +163,60 @@ services:
         recovery:
           # A row left in "calling" means the worker died mid-dial. It is NOT
           # reset automatically: the number may already have connected and been
-          # transferred, so re-dialing risks a duplicate call to a real person.
+          # transferred, so re-dialling risks a duplicate call to a real person.
           # Recovery is a manual, human decision on the persisted record.
           stuck_status: calling
           auto_recovery: false
           detect_with:
             - voice_calls_inflight_total
             - voice_calls_inflight_oldest_seconds
+          # FIXED 2026-09-27. These two gauges previously exported nothing at all.
+          # The callback imported opentelemetry.metrics.Measurement, which no
+          # longer exists in the SDK this repo pins (1.39.1). Because the callback
+          # is invoked lazily by the SDK, the ImportError was raised inside the
+          # collection loop and swallowed, so every gauge silently vanished while
+          # the counter kept working -- which is why this looked like a data
+          # problem rather than a code fault. The callback now returns
+          # [Observation(value)], and all four voice_calls_* series were confirmed
+          # present in Prometheus with VoiceCallsStuckInFlight reaching "firing".
+          gauge_export: verified working (Observation callback)
+          verified_series:
+            - voice_calls_inflight_total
+            - voice_calls_inflight_oldest_seconds
+            - voice_calls_pending_total
+            - voice_calls_queued_gauge
+          # KNOWN LIMITATION, documented not fixed. Both gauges are scalars over
+          # the whole table: voice_calls_inflight_total is a row count and
+          # voice_calls_inflight_oldest_seconds is a MAX age, with no per-row
+          # labels. Consequences, confirmed against live data on 2026-09-27:
+          #
+          #   * A single row that is never resolved pins voice_calls_inflight_oldest_seconds
+          #     at its own age forever. One row from 2026-04-25 was still in
+          #     "calling" after ~155 days, so VoiceCallsStuckInFlight is
+          #     continuously firing with a value around 1.34e7s.
+          #   * A NEW stuck call is not hidden -- the alert still fires, because
+          #     it tests a threshold rather than a value change -- but the value
+          #     is unchanged by it, so the alert text cannot distinguish "one old
+          #     row" from "a call died just now". The signal is a boolean with no
+          #     cardinality behind it.
+          #   * An alert that never clears trains people to ignore it, which
+          #     defeats the purpose of having added it at all.
+          #
+          # The fix is per-row labelling (call_id on the age gauge) plus a count
+          # of rows over threshold, so a fresh stuck call is addressable. Not
+          # applied here: it changes metric cardinality and the alert expression,
+          # so it is a deliberate decision rather than a silent omission.
+          gauge_granularity: table-wide scalar (count and max age)
+          per_row_labels: none
+          observed_stuck_row:
+            created_at: "2026-04-25T09:04:27.414475+00:00"
+            status: calling
+            error_message: null
+            call_logs_row_exists: false
+            # The row is an isolated artifact, not an ongoing failure mode: the
+            # 500 most recent rows (2026-08-23 to 2026-08-29) were all "success".
+            # It is left in place deliberately. Clearing it is a human decision on
+            # production data, not a code change.
         retry_policy:
           acknowledge_after_execution: true
           reject_on_worker_loss: true
@@ -156,7 +267,28 @@ services:
 identifiers:
   request_id: HTTP request correlation
   trace_id: distributed operation correlation
-  call_id: voice call correlation
+  # NOT PERSISTED IN EITHER TABLE. Verified 2026-09-27: outbound_calls has
+  # columns (id, phone_number, status, error_message, created_at) and call_logs
+  # has (id, created_at, phone_number, customer_name, transcript, summary,
+  # duration, status, metadata). Neither has a call_id; selecting call_logs.call_id
+  # returns 42703 "column call_logs.call_id does not exist". The two tables share
+  # no join key, so a voice call cannot be reconstructed from the database.
+  #
+  # The only shared column is phone_number, which is not unique over time, so it
+  # is a weak join at best. call_logs also records conversation outcomes only
+  # (observed values: completed, Completed, booked) and never dial outcomes, so a
+  # dialled call that never connected leaves no call_logs row at all -- the
+  # stuck-calling row above is exactly that case.
+  #
+  # What this entry does NOT claim: whether call_id actually reaches Langfuse.
+  # That path runs through LiveKit job metadata and was not traced here. The
+  # honest statement is narrower: the correlation is not verifiable from
+  # persisted rows, so a trace guarantee that only holds in the observability
+  # backend cannot be audited from the data of record.
+  call_id: voice call correlation; carried in process and in observability, not persisted
+  persisted_call_id: false
+  join_between_outbound_calls_and_call_logs: none
+  call_logs_records: conversation outcome, not dial outcome
   booking_id: booking workflow correlation
   task_id: Celery task correlation
 
