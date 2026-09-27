@@ -585,7 +585,17 @@ class RAGEngine:
         keep = RAG_INDEX_KEY.format(hash=keep_hash)
         stale = []
         for key in _index_redis.scan_iter(match=RAG_INDEX_KEY_SCAN_PATTERN, count=100):
-            if key != keep:
+            # The index client is created with decode_responses=False, so
+            # scan_iter yields bytes while `keep` is str. Comparing those
+            # directly is always unequal, which made every key look stale --
+            # including the entry just written -- so pruning deleted the cache
+            # it was meant to keep and no fingerprint ever survived.
+            #
+            # Compare on a decoded copy, but delete the original key. Decoding
+            # is lossy for undecodable bytes, and re-encoding a replaced
+            # character would not match the key Redis actually holds.
+            name = key.decode("utf-8", "replace") if isinstance(key, bytes) else key
+            if name != keep:
                 stale.append(key)
         if stale:
             _index_redis.delete(*stale)
