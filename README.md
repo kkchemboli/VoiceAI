@@ -207,10 +207,8 @@ signals.
 | `GET`  | `/api/outbound/queue` | Outbound call queue status |
 | `GET/POST` | `/api/config` | Read/update agent prompts and greetings |
 | `POST` | `/api/config/sheet-url` | Save the campaign Google Sheet URL at runtime |
-| `GET/POST` | `/api/knowledge`, `/api/knowledge/{lang}` | Read/update knowledge base |
-| `GET`  | `/api/knowledge/status` | List knowledge sources |
-| `POST` | `/api/knowledge/upload` | Upload a TXT/PDF knowledge file |
-| `DELETE` | `/api/knowledge/file/{filename}` | Remove a knowledge file |
+| `GET/POST` | `/api/knowledge`, `/api/knowledge/{lang}` | Read/update knowledge base (Supabase only) |
+| `GET`  | `/api/knowledge/status` | Knowledge sources in Supabase |
 | `GET`  | `/api/logs` | Paginated call logs |
 | `GET`  | `/api/appointments` | Confirmed appointments from Cal.com |
 

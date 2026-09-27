@@ -1,7 +1,7 @@
 import os
 import logging
 import time
-from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Query, Request
+from fastapi import FastAPI, HTTPException, Body, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
@@ -15,7 +15,6 @@ from services.celery_worker import app as celery_app
 from services.supabase_client import execute_query, get_supabase_client
 from services.runtime_config import get_sheet_url, set_sheet_url
 from utils.distributed_lock import BULK_IMPORT_LOCK, is_lock_held, redis_client
-from utils.paths import InvalidFilenameError, safe_knowledge_path
 from core.config import settings
 from core.observability import (
     celery_task_headers,
@@ -305,66 +304,73 @@ async def update_sheet_url(update: SheetUrlUpdate):
 
 @app.get("/api/knowledge/status")
 async def get_knowledge_status():
-    """List detected knowledge sources (PDF, TXT, Sheet)"""
-    base_dir = os.path.dirname(__file__)
-    files = []
-    for f in os.listdir(base_dir):
-        if f.endswith((".txt", ".pdf")):
-            files.append({
-                "name": f,
-                "type": "file",
-                "format": "pdf" if f.endswith(".pdf") else "txt",
-                "size": os.path.getsize(os.path.join(base_dir, f))
-            })
-            
-    sheet_url = await get_sheet_url()
+    """Report what the agent will actually retrieve from.
+
+    This used to list .txt/.pdf files in the backend directory. Those are gone,
+    so it always returned an empty list while looking like a working feature.
+    It now reports the Supabase rows that are the real source of truth.
+
+    sheet_url stays in this response because outboundService.getSheetUrl() reads
+    it from here. The Sheet is the outbound call list, not knowledge, so that
+    coupling is wrong -- but moving it is a frontend contract change, not dead
+    code removal.
+    """
+    if not supabase:
+        raise HTTPException(
+            status_code=503, detail="Knowledge store unavailable (Supabase not configured)"
+        )
+
+    # `language` and `content` only. `updated_at` was verified to exist and be
+    # populated on 2026-09-27, so it is not selected for being unknown, but for
+    # being unowned: nothing here creates or migrates this table, and PostgREST
+    # fails the whole query on one unknown column, so depending on a column this
+    # repo does not own would turn a table recreation into a broken endpoint.
+    sources = []
+    try:
+        response = await execute_query(
+            supabase.table("knowledge_base").select("language, content")
+        )
+        for row in response.data or []:
+            content = row.get("content") or ""
+            if not content.strip():
+                continue
+            sources.append(
+                {
+                    "language": row.get("language") or "en",
+                    "characters": len(content),
+                    "source": "supabase",
+                }
+            )
+    except Exception as e:
+        logger.exception("Error reading knowledge sources")
+        return {
+            "sources": [],
+            "source_of_truth": "supabase.knowledge_base",
+            "total_sources": 0,
+            "sheet_url": await get_sheet_url(),
+            "error": str(e),
+        }
+
     return {
-        "files": files,
-        "sheet_url": sheet_url,
-        "total_files": len(files)
+        "sources": sources,
+        "source_of_truth": "supabase.knowledge_base",
+        "total_sources": len(sources),
+        "sheet_url": await get_sheet_url(),
     }
 
 
-@app.post("/api/knowledge/upload")
-async def upload_knowledge_file(file: UploadFile = File(...)):
-    """Upload a PDF or TXT knowledge file to the backend directory"""
-    try:
-        file_path = safe_knowledge_path(
-            os.path.dirname(__file__), file.filename or ""
-        )
-    except InvalidFilenameError:
-        raise HTTPException(status_code=400, detail="Invalid filename.")
-
-    if not file_path.endswith((".pdf", ".txt")):
-        raise HTTPException(status_code=400, detail="Only .pdf and .txt files are allowed.")
-
-    try:
-        content = await file.read()
-        with open(file_path, "wb") as f:
-            f.write(content)
-        return {"status": "success", "message": f"Uploaded {os.path.basename(file_path)} successfully."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to upload file: {e}")
-
-
-@app.delete("/api/knowledge/file/{filename}")
-async def delete_knowledge_file(filename: str):
-    """Delete a specific knowledge file from the backend directory"""
-    try:
-        file_path = safe_knowledge_path(os.path.dirname(__file__), filename)
-    except InvalidFilenameError:
-        raise HTTPException(status_code=400, detail="Invalid filename.")
-
-    if os.path.exists(file_path):
-        try:
-            os.remove(file_path)
-            return {"status": "success", "message": f"Deleted {os.path.basename(file_path)}"}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error deleting file: {e}")
-    else:
-        raise HTTPException(status_code=404, detail="File not found.")
-
-
+    # Removed: POST /api/knowledge/upload and DELETE /api/knowledge/file/{name}.
+    # Both existed only to manage local TXT/PDF files, and knowledge now lives
+    # exclusively in Supabase (see GET/POST /api/knowledge below), so they had
+    # no reader left. Uploads reported success while writing to an ephemeral
+    # container filesystem nothing consulted.
+    #
+    # The delete endpoint was worse than dead: it accepted any bare filename in
+    # the backend directory with no extension allowlist, and the API is proxied
+    # unauthenticated through frontend/nginx.conf on a published port. So
+    # DELETE /api/knowledge/file/main.py removed the API's own entrypoint, and
+    # with restart: unless-stopped the container could not come back. Removed
+    # rather than patched, since the capability it provided is gone.
 
 
 @app.get("/api/config")

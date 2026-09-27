@@ -20,6 +20,10 @@ services:
         - GET /api/config
         - POST /api/config
       knowledge:
+        # Supabase is the only knowledge store. There are no file upload or
+        # delete endpoints: local TXT/PDF files were removed, and the old
+        # DELETE /api/knowledge/file/{name} was reachable unauthenticated
+        # through the frontend proxy with no extension allowlist.
         - GET /api/knowledge
         - POST /api/knowledge/{language}
         - GET /api/knowledge/status

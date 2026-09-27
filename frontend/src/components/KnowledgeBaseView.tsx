@@ -92,13 +92,13 @@ export const KnowledgeBaseView: React.FC = () => {
           className={`tab-btn ${activeTab === 'en' ? 'active' : ''}`}
           onClick={() => setActiveTab('en')}
         >
-          English (knowledge.txt)
+          English
         </button>
         <button 
           className={`tab-btn ${activeTab === 'hi' ? 'active' : ''}`}
           onClick={() => setActiveTab('hi')}
         >
-          Hindi (knowledge_hi.txt)
+          Hindi
         </button>
       </div>
 
