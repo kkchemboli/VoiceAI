@@ -214,20 +214,22 @@ currently writes errors in that shape.
   rather than cosmetic: the service sets `cap_drop: ALL` and
   `no-new-privileges`, and an nginx master running as root creates and `chown`s
   its temp directories down to the worker user at startup. With no capabilities
-  that `chown` returns `EPERM` and the master aborts before it ever binds, so the
-  container crash-looped on every start. nginx only attempts that `chown` when
-  the effective uid is 0, so starting unprivileged avoids it — at the cost of
-  having to pre-create and `chown` the temp paths at build time, which is what
-  `Dockerfile.frontend` now does. Verified: 0 restarts, `8080` published, `/`
-  serving the SPA, `/dashboard` falling through to `index.html` for client-side
-  routes, and `/api/knowledge/status` returning live Supabase rows through the
-  proxy.
+  that `chown` returns `EPERM` and the master aborts before it ever listens:
+  starting unprivileged avoids it entirely -- but the directories then have to be
+  writable up front, which is what `Dockerfile.frontend` does. Verified: 0 restarts,
+  host ports 80 and 443 mapped to container 8081 and 8443 respectively, and the
+  container's internal 8080 answers only the healthcheck (404s everything else).
+- `80:8081` on the host maps to the container's non-privileged 8081 (HTTP → HTTPS redirect).
+- `443:8443` on the host maps to the container's 8443 (TLS termination, static assets,
+  `/api/` proxy, `X-Frontend-Proxy: 1` header).
+- The internal 8080 port is deliberately not published to the host; it answers the
+  Docker healthcheck and nothing else.
 
-Note that only `/api/` is proxied. The API's health routes are `/health/live`
-and `/health/ready`, which sit outside that prefix and are answered by Compose
-health checks rather than through the browser, so `/api/health/live` correctly
-returns FastAPI's own 404 — which is a useful signal that the proxy really is
-forwarding to the API rather than falling through to the SPA.
+Note that only `/api/` is proxied. The API's health routes `/health/live` and
+`/health/ready` sit outside that prefix and are answered by Compose health checks
+rather than through the browser, so `/api/health/live` correctly returns FastAPI's
+own 404 — a useful signal that the proxy is forwarding to the API rather than
+falling through to the SPA.
 
 ## Network rules
 
@@ -292,10 +294,66 @@ the leak, so it is part of the contract rather than a build optimization.
 - The knowledge *lifecycle*. Removing the file endpoints made Supabase the only
   writer, and Supabase has no UI for it, so an editor has to use the API. A real
   editing surface is a product decision, not a boundary change.
-- Authentication on the API. There is none, and the frontend proxies `/api/`
-  unauthenticated on a published port. That is worth fixing, but it is a
-  deliberate separate piece of work: adding auth to these routes changes how the
-  frontend calls every endpoint, not just the knowledge ones.
+- Authentication on the API
+
+  There is now a single-user login gate. Two distinct client populations are
+  expected, and they are trusted differently:
+
+  1. **Browser traffic.** The browser reaches the API only through the
+     frontend's nginx, which stamps every proxied request with
+     ``X-Frontend-Proxy: 1``. Any ``/api/`` request carrying that header
+     without a valid session receives ``401 Authentication required``.
+     Because the browser cannot reach the API's published port directly,
+     a marked request can *only* come from a browser — the header is a
+     reliable signal that the request must be authenticated.
+
+  2. **The external server.** It talks to the API's published port
+     ``:8000`` directly and is trusted without credentials. Its requests
+     carry no marker header, so they are not challenged. The control for
+     this path is the network firewall, not the code: the API trusts
+     unmarked requests by design. Do not publish the port before the
+     allowlist is in place, and do not widen it to ``0.0.0.0/0``.
+
+  In short: the marker header protects the browser path, and the firewall
+  protects the direct-port path. Neither alone is sufficient; together they
+  cover both populations without adding authentication to the
+  server-to-server flow.
+
+  Session mechanics:
+
+  - A signed JWT lives in an ``HttpOnly``, ``Secure``, ``SameSite=Lax``
+    cookie named ``vcagent_session``, valid for 12 hours.
+  - ``HttpOnly`` means JavaScript cannot read the token, so an XSS bug
+    cannot exfiltrate the session. This is the main reason to prefer a
+    cookie over localStorage.
+  - ``SameSite=Lax`` is the CSRF mitigation: a cross-site form or fetch
+    will not carry the cookie.
+  - ``Secure`` means the browser only sends the cookie over HTTPS, which
+    is why the frontend terminates TLS. Without it, a Secure cookie sent
+    over plain HTTP is silently dropped by the browser — which looks
+    exactly like a login that never stuck.
+  - The password is stored as a bcrypt digest, never plaintext. Generate
+    one with ``python backend/tools/hash_password.py``.
+  - The API refuses to start without a complete login configuration
+    rather than silently serving an open door. ``assert_auth_configured``
+    checks ``ADMIN_USERNAME``, ``ADMIN_PASSWORD_HASH`` (must start with
+    ``$2``), and ``SESSION_SECRET`` at startup and raises
+    ``AuthMisconfigured`` if any are missing or malformed.
+  - The login endpoint deliberately returns the same body for wrong
+    username and wrong password, so it cannot be used to enumerate users.
+
+  Three deliberate omissions, noted rather than hidden:
+
+  - **No rate limiting.** This API gates a single-user deployment, not a
+    public registration surface.
+  - **No multi-user support.** One admin account; there is no
+    account-creation endpoint, because an account-creation endpoint would
+    be a way *around* the gate rather than a feature of it.
+  - **Logout does not revoke.** Sessions are stateless, so a captured
+    token stays valid until its 12-hour expiry. Logging out clears this
+    browser's cookie immediately, which is the normal expectation; the
+    revocation story is "rotate SESSION_SECRET", which invalidates every
+    session at once.
 
 ## Shared image foundation
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BookOpen, Save, Loader2 } from 'lucide-react';
+import { apiFetch } from '../services/api';
 import './KnowledgeBaseView.css';
 
 export const KnowledgeBaseView: React.FC = () => {
@@ -10,7 +11,6 @@ export const KnowledgeBaseView: React.FC = () => {
   const [saving, setSaving] = useState<boolean>(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
-  const API_BASE = import.meta.env.VITE_API_URL || '';
 
   const fetchKnowledge = async () => {
     setLoading(true);
@@ -18,7 +18,7 @@ export const KnowledgeBaseView: React.FC = () => {
     // Use individual try-catch for each fetch to prevent total failure
     const fetchPart = async (url: string, fallback: any = { content: '' }) => {
       try {
-        const res = await fetch(url);
+        const res = await apiFetch(url);
         if (!res.ok) return fallback;
         return await res.json();
       } catch (err) {
@@ -29,9 +29,9 @@ export const KnowledgeBaseView: React.FC = () => {
 
     try {
       const [enData, hiData, statusData] = await Promise.all([
-        fetchPart(`${API_BASE}/api/knowledge?lang=en`),
-        fetchPart(`${API_BASE}/api/knowledge?lang=hi`),
-        fetchPart(`${API_BASE}/api/knowledge/status`, null)
+        fetchPart(`/api/knowledge?lang=en`),
+        fetchPart(`/api/knowledge?lang=hi`),
+        fetchPart(`/api/knowledge/status`, null)
       ]);
       
       setEnContent(enData.content || '');
@@ -58,7 +58,7 @@ export const KnowledgeBaseView: React.FC = () => {
     const content = activeTab === 'en' ? enContent : hiContent;
     
     try {
-      const response = await fetch(`${API_BASE}/api/knowledge/${activeTab}`, {
+      const response = await apiFetch(`/api/knowledge/${activeTab}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content })

@@ -176,7 +176,7 @@ def request_client_host(request: Request) -> str:
 
 
 @app.post("/api/auth/login")
-async def login(credentials: LoginRequest):
+async def login(request: Request, credentials: LoginRequest):
     """Authenticate the single admin user and issue a session cookie.
 
     Failure is deliberately undifferentiated: a wrong username and a wrong

@@ -15,11 +15,27 @@ services:
       CAL_API_KEY: ${CAL_API_KEY:-}
       CAL_EVENT_ID: ${CAL_EVENT_ID:-}
       GOOGLE_SHEET_URL: ${GOOGLE_SHEET_URL:-}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:8080}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://localhost}
       REDIS_URL: redis://redis:6379/0
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      # Single-user login gate. Required, so the stack cannot be brought up
+      # without a working login -- matching the existing convention for
+      # GRAFANA_ADMIN_PASSWORD. The API re-checks these at startup and refuses to
+      # come up if any are missing or the hash is not a bcrypt digest.
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:?ADMIN_PASSWORD_HASH must be set to a bcrypt digest from backend/tools/hash_password.py}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET must be set; generate with openssl rand -hex 32}
     expose:
       - "8000"
+    ports:
+      # Published so the external server can call the API directly, and so the
+      # frontend's own verification can hit :8000. This is NOT an authenticated
+      # port: the API trusts requests that arrive without the
+      # X-Frontend-Proxy header, because the only thing expected here is
+      # server-to-server traffic from the allowlisted external host. That makes
+      # the cloud firewall the actual control -- do not publish this before the
+      # allowlist is in place, and never widen it to 0.0.0.0/0.
+      - "8000:8000"
     depends_on:
       redis:
         condition: service_healthy
@@ -179,7 +195,20 @@ services:
     cap_drop:
       - ALL
     ports:
-      - "8080:8080"
+      # The browser-facing surface. Host 443 and 80 map to the container's
+      # unprivileged 8443/8081 because this service runs with cap_drop: ALL and
+      # cannot bind anything below 1024 itself. Port 8080 is deliberately NOT
+      # published: it stays an in-container healthcheck listener only.
+      - "443:8443"
+      - "80:8081"
+    volumes:
+      # TLS material, read-only, never baked into the image or committed.
+      # Point TLS_CERT_DIR at the host directory holding fullchain.pem and
+      # privkey.pem. The key must be readable by uid 101 (the nginx user).
+      - type: bind
+        source: ${TLS_CERT_DIR:-./certs}
+        target: /etc/nginx/certs
+        read_only: true
     depends_on:
       api:
         condition: service_healthy

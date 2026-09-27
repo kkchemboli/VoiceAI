@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_URL || '';
+import { apiFetch } from './api';
 
 export interface QueueItem {
   id: string;
@@ -17,7 +17,7 @@ export const outboundService = {
    */
   async triggerManualCall(phone: string): Promise<{ success: boolean; message: string }> {
     try {
-      const response = await fetch(`${API_BASE}/api/outbound/call`, {
+      const response = await apiFetch(`/api/outbound/call`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone_number: phone }),
@@ -40,7 +40,7 @@ export const outboundService = {
    */
   async triggerBulkCampaign(): Promise<{ success: boolean; message: string }> {
     try {
-      const response = await fetch(`${API_BASE}/api/outbound/bulk-dial`, {
+      const response = await apiFetch(`/api/outbound/bulk-dial`, {
         method: 'POST',
       });
       if (!response.ok) throw new Error('Failed to start campaign');
@@ -56,7 +56,7 @@ export const outboundService = {
    */
   async getSheetUrl(): Promise<string> {
     try {
-      const response = await fetch(`${API_BASE}/api/knowledge/status`);
+      const response = await apiFetch(`/api/knowledge/status`);
       if (!response.ok) return '';
       const data = await response.json();
       return data.sheet_url || '';
@@ -71,7 +71,7 @@ export const outboundService = {
    */
   async saveSheetUrl(url: string): Promise<boolean> {
     try {
-      const response = await fetch(`${API_BASE}/api/config/sheet-url`, {
+      const response = await apiFetch(`/api/config/sheet-url`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
@@ -88,7 +88,7 @@ export const outboundService = {
    */
   async triggerBatchCalls(numbers: string[]): Promise<{ success: boolean; batch_id: string }> {
     try {
-      const response = await fetch(`${API_BASE}/api/outbound/batch`, {
+      const response = await apiFetch(`/api/outbound/batch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone_numbers: numbers }),
@@ -110,7 +110,7 @@ export const outboundService = {
    */
   async getQueueStatus(): Promise<QueueItem[]> {
     try {
-      const response = await fetch(`${API_BASE}/api/outbound/queue`);
+      const response = await apiFetch(`/api/outbound/queue`);
       if (!response.ok) {
         // Fallback for development if endpoint doesn't exist yet
         return this.getMockQueue();

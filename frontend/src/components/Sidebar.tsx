@@ -4,16 +4,19 @@ import {
   Calendar,
   Mic2,
   BookOpen,
-  PhoneCall
+  PhoneCall,
+  LogOut
 } from 'lucide-react';
 import './Sidebar.css';
 
 interface SidebarProps {
   currentView: string;
   setCurrentView: (view: any) => void;
+  username?: string | null;
+  onLogout?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, username, onLogout }) => {
   const menuGroups = [
     {
       title: 'OVERVIEW',
@@ -71,6 +74,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView })
           </div>
         ))}
       </nav>
+
+      {onLogout && (
+        <div className="sidebar-footer">
+          {username && <div className="sidebar-user">{username}</div>}
+          <button className="nav-item" onClick={onLogout}>
+            <span className="item-icon"><LogOut size={18} /></span>
+            <span className="item-label">Sign out</span>
+          </button>
+        </div>
+      )}
     </aside>
   );
 };

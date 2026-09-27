@@ -6,8 +6,16 @@ import { KnowledgeBaseView } from './components/KnowledgeBaseView';
 import { CalendarView } from './components/Calendar';
 import { CallLogsView } from './components/CallLogsView';
 import { OutboundView } from './components/Outbound/OutboundView';
+import { LoginView } from './components/LoginView';
+import { apiFetch, checkSession, logout, setUnauthorizedHandler } from './services/api';
 
 type View = 'dashboard' | 'agents' | 'knowledge' | 'calendar' | 'logs' | 'outbound';
+
+// 'checking' is a real third state rather than a null username: on first paint
+// we have not asked the server whether a session exists yet, and rendering the
+// login form during that gap would flash the login screen at an already-signed-in
+// user on every reload.
+type AuthState = 'checking' | 'authenticated' | 'unauthenticated';
 
 interface CallLog {
   id: number;
@@ -31,8 +39,9 @@ interface Appointment {
 }
 
 function App() {
-  const API_BASE = import.meta.env.VITE_API_URL || '';
   const [currentView, setCurrentView] = useState<View>('dashboard');
+  const [authState, setAuthState] = useState<AuthState>('checking');
+  const [username, setUsername] = useState<string | null>(null);
   
   // Inbound State
   const [agentPrompt, setAgentPrompt] = useState<string>('');
@@ -51,7 +60,7 @@ function App() {
 
   const fetchLogs = async (page: number) => {
     try {
-      const res = await fetch(`${API_BASE}/api/logs?page=${page}&page_size=${pageSize}`);
+      const res = await apiFetch(`/api/logs?page=${page}&page_size=${pageSize}`);
       const d = await res.json();
       if (d.data.length === 0 && d.total > 0 && page > 1) {
         setCurrentPage(1);
@@ -67,7 +76,7 @@ function App() {
   const refreshData = () => {
     setCurrentPage(1);
     // Fetch Agent Config
-    fetch(`${API_BASE}/api/config`)
+    apiFetch(`/api/config`)
       .then(res => res.json())
       .then(data => {
         setAgentPrompt(data.system_prompt || "");
@@ -84,7 +93,7 @@ function App() {
   const fetchAppointments = (date: Date) => {
     const year = date.getFullYear();
     const month = date.getMonth() + 1;
-    fetch(`${API_BASE}/api/appointments?year=${year}&month=${month}`)
+    apiFetch(`/api/appointments?year=${year}&month=${month}`)
       .then(res => res.json())
       .then(data => {
         setAppointments(data);
@@ -92,29 +101,72 @@ function App() {
       .catch(err => console.error("Failed to fetch appointments:", err));
   };
 
+  // Ask the server whether this browser already holds a session, so a reload
+  // does not bounce a signed-in user back to the login form.
+  useEffect(() => {
+    let cancelled = false;
+    checkSession().then((session) => {
+      if (cancelled) return;
+      setUsername(session.username);
+      setAuthState(session.authenticated ? 'authenticated' : 'unauthenticated');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Any 401 from anywhere in the app drops straight back to the login screen.
+  // Registered here rather than per-view so an expired session cannot be missed
+  // by one component's error handling.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      setUsername(null);
+      setAuthState('unauthenticated');
+    });
+    return () => setUnauthorizedHandler(null);
+  }, []);
+
+  const handleAuthenticated = (name: string) => {
+    setUsername(name);
+    setAuthState('authenticated');
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    setUsername(null);
+    setAuthState('unauthenticated');
+  };
+
+  // Every data fetch below waits for authentication. Without this the mount
+  // effect would fire while authState is still 'checking', sending a burst of
+  // unauthenticated requests that all come back 401.
+  const isAuthenticated = authState === 'authenticated';
+
 useEffect(() => {
+  if (!isAuthenticated) return;
   refreshData();
   fetchAppointments(currentMonth);
   // NOTE: Removed auto-polling to prevent overwriting user input
   // Data refreshes only on initial load or manual refresh
-}, []);
+}, [isAuthenticated]);
 
   // Fetch appointments when month changes
   useEffect(() => {
+    if (!isAuthenticated) return;
     fetchAppointments(currentMonth);
-  }, [currentMonth]);
+  }, [currentMonth, isAuthenticated]);
 
   // Reset to page 1 when switching to logs view
   useEffect(() => {
-    if (currentView === 'logs') {
+    if (isAuthenticated && currentView === 'logs') {
       setCurrentPage(1);
       fetchLogs(1);
     }
-  }, [currentView]);
+  }, [currentView, isAuthenticated]);
 
   const saveAgentSettings = async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/config`, {
+      const response = await apiFetch(`/api/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -159,9 +211,25 @@ if (response.ok) {
   
   const filteredCalls = fullCallLogs.filter((log: CallLog) => log.date === formatDate(new Date()));
 
+  // Hold the whole app back until the session question is settled. This is the
+  // client half of the gate; the server enforces it independently, so a user
+  // who reaches the dashboard anyway still gets 401 on every API call.
+  if (authState === 'checking') {
+    return <div className="login-screen" />;
+  }
+
+  if (authState === 'unauthenticated') {
+    return <LoginView onAuthenticated={handleAuthenticated} />;
+  }
+
   return (
     <div className="app-layout">
-      <Sidebar currentView={currentView} setCurrentView={setCurrentView} />
+      <Sidebar
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        username={username}
+        onLogout={handleLogout}
+      />
       
       <main className="content-area">
         <div className="bg-watermark">{currentView.toUpperCase()}</div>

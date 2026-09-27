@@ -12,3 +12,7 @@ __pycache__/
 tmp/
 llogs.txt
 
+
+# Build artifacts
+tsconfig.node.tsbuildinfo
+tsconfig.tsbuildinfo

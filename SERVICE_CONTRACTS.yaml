@@ -8,14 +8,34 @@ services:
     health:
       liveness: GET /health/live
       readiness: GET /health/ready
-    endpoint_groups:
-      outbound:
-        - POST /api/outbound/call
-        - POST /api/outbound/batch
-        - POST /api/outbound/bulk-dial
-        - GET /api/outbound/queue
+endpoint_groups:
+        outbound:
+          - POST /api/outbound/call
+          - POST /api/outbound/batch
+          - POST /api/outbound/bulk-dial
+          - GET /api/outbound/queue
+        auth:
+          # Public for the SPA: no cookie required. The API refuses to start without
+          # the login config, so these always exist and never return 500.
+          - POST /api/auth/login
+          - GET /api/auth/session
+          - POST /api/auth/logout
       booking:
         - GET /api/appointments
+      trust_model: |
+        Single-user login gate.
+        The API terminates TLS through the frontend's nginx.
+        nginx stamps every proxied browser request with ``X-Frontend-Proxy: 1``.
+        The API requires a valid session cookie for any ``/api/`` request that
+        carries this header, and trusts any request without it.
+        This means the *only* way to reach authenticated /api routes from a
+        browser is through the frontend; a caller reaching the published :8000
+        port directly (without the header) is trusted on the strength of the
+        network firewall rather than application credentials.
+        ``/health/*`` endpoints are always unauthenticated for Docker healthchecks.
+        Sessions live for 12 hours in an HttpOnly, Secure, SameSite=Lax cookie.
+        bcrypt hashes the stored password; a plaintext password must never be
+        stored in environment.
       configuration:
         - GET /api/config
         - POST /api/config
