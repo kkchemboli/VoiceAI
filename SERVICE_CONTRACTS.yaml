@@ -41,6 +41,24 @@ services:
       - LIVEKIT_API_KEY
       - LIVEKIT_API_SECRET
       - OPENAI_API_KEY
+      # RAG index cache and cross-process build lock. Without it the engine
+      # still runs, but every job process re-embeds the knowledge base on its
+      # own instead of one process building and the rest reading the cache.
+      - REDIS_URL
+    capacity:
+      # There is no max-concurrent-calls setting in livekit-agents 1.5.x.
+      # num_idle_processes is the warm job-process pool (not a cap; the pool
+      # spawns beyond it on demand) and load_threshold is CPU-based admission
+      # control that marks the worker unavailable above it. Scale by adding
+      # replicas, not by raising the pool size past CPU saturation.
+      num_idle_processes: VOICE_NUM_IDLE_PROCESSES
+      load_threshold: VOICE_LOAD_THRESHOLD
+    knowledge:
+      source_of_truth: supabase.knowledge_base
+      refresh: per-call fingerprint check; no TTL, no polling
+      # An admin edit is live on the next call. The only knowledge store is
+      # Supabase: there is no local file mirror.
+      stale_local_mirror: never
 
   celery-worker:
     protocol: redis-celery
@@ -68,6 +86,22 @@ services:
           - calling
           - success
           - failed
+        claim:
+          # Atomic compare-and-swap: the update is guarded by
+          # .eq("status", "pending"), so exactly one worker can move a row to
+          # "calling". Duplicate task delivery is therefore harmless and needs
+          # no extra "dispatched" marker.
+          method: update where id = ? and status = 'pending' set status = 'calling'
+        recovery:
+          # A row left in "calling" means the worker died mid-dial. It is NOT
+          # reset automatically: the number may already have connected and been
+          # transferred, so re-dialing risks a duplicate call to a real person.
+          # Recovery is a manual, human decision on the persisted record.
+          stuck_status: calling
+          auto_recovery: false
+          detect_with:
+            - voice_calls_inflight_total
+            - voice_calls_inflight_oldest_seconds
         retry_policy:
           acknowledge_after_execution: true
           reject_on_worker_loss: true
@@ -76,22 +110,44 @@ services:
   celery-beat:
     protocol: redis-celery
     broker: REDIS_URL
+    # Run EXACTLY ONE instance. There is no distributed scheduler and no leader
+    # election here, so N replicas means N dispatches per interval.
+    #
+    # This is wasteful but not corrupting: the claim above is an atomic
+    # compare-and-swap, so the extra tasks find every row already claimed and
+    # exit as "skipped". The cost is amplified task volume and log noise, not
+    # duplicate dialling. Do not "fix" it by adding a lock unless you also
+    # accept that a lost lock stalls the queue.
     singleton: true
+    max_replicas: 1
     schedules:
       - task: services.celery_worker.dispatch_pending_calls
         interval_seconds: 60
 
   redis:
     protocol: redis
-    address: redis:6379
+    address: redis:6379/0
+    persistence: appendonly
     purpose:
       - Celery broker
       - Short-lived coordination and cache state
+      - RAG index cache (rag:index:<fingerprint>, rebuilt on miss)
+      - RAG build lock (rag:build:<fingerprint>, cost optimisation only)
+      - Runtime-editable config (config:google_sheet_url)
     not_source_of_truth_for:
       - bookings
       - call_logs
       - agent_configuration
       - uploaded_files
+      # Knowledge content lives in Supabase. The RAG index in Redis is a derived
+      # cache keyed by a content fingerprint, safe to delete at any time.
+      - knowledge_base
+    safe_to_flush:
+      # Everything under these prefixes is derived or runtime-editable and is
+      # rebuilt on demand. Flushing does not lose durable business data.
+      - "rag:index:*"
+      - "rag:build:*"
+      - "config:google_sheet_url"
 
 identifiers:
   request_id: HTTP request correlation

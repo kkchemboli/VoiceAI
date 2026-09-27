@@ -83,3 +83,33 @@ groups:
         annotations:
           summary: "Outbound call backlog above 20"
           description: "{{ $value }} calls are stuck pending — the celery worker likely crashed. Inspect Celery worker logs and the persisted call records."
+
+      # 7. Calls stuck mid-dial. A row in "calling" whose worker died is invisible
+      #    to every other signal: it is not pending, so the backlog gauge is blind
+      #    to it, and no task is running, so no error counter moves. These gauges
+      #    come from the dispatcher querying status="calling" each beat.
+      #    Age is created_at-based, so it is an UPPER BOUND on calling age.
+      #    Do NOT auto-recover these: resetting to "pending" re-dials a number that
+      #    may already have connected and transferred.
+      - alert: VoiceCallsStuckInFlight
+        expr: voice_calls_inflight_oldest_seconds > 900
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Outbound call stuck mid-dial"
+          description: "{{ $value }}s — a call has been in state 'calling' far longer than any real call, so the worker died mid-dial. {{ $labels.instance }} also has voice_calls_inflight_total in flight. Inspect the persisted record and LiveKit/SIP logs, then resolve the row BY HAND. Do not reset it to pending: the number may already have been dialled."
+
+      # 8. Calls are in flight but the dispatcher stopped reporting. Catches a
+      #    dead dispatcher, which would otherwise let both gauges go stale-flat and
+      #    make "no stuck calls" indistinguishable from "nobody is looking".
+      - alert: VoiceCallsInFlightNotObserved
+        expr: |
+          voice_calls_inflight_total > 0
+          unless on() (voice_calls_inflight_total offset 15m)
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "In-flight gauge is stale"
+          description: "voice_calls_inflight_total was non-zero but has not been reported for 15m, so the dispatcher or its beat schedule has stopped. The 'no stuck calls' state is untrustworthy until it reports again."

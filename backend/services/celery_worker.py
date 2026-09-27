@@ -63,6 +63,12 @@ app.conf.timezone = 'UTC'
 SUPABASE_URL = settings.supabase_url
 SUPABASE_KEY = settings.supabase_key
 
+# A dialled call that is still marked "calling" after this long means the worker
+# died mid-call. Comfortably longer than any real call, so a healthy call never
+# trips it. Age is measured from created_at, which over-states calling age, so
+# this threshold has to sit above the longest plausible call rather than at it.
+STUCK_CALL_AGE_SECONDS = 900  # 15 minutes
+
 supabase = get_supabase_client()
 
 
@@ -115,6 +121,63 @@ def import_campaign_leads(self):
         detach_otel_context(token)
 
 
+def record_inflight_gauges() -> None:
+    """Gauge calls that are mid-dial, so a crashed worker is visible.
+
+    A row in "calling" whose worker died is invisible to every existing signal:
+    it is not pending, so it does not show up in the backlog gauge, and no task
+    is running, so no error is recorded. These two gauges are the only way to
+    see it.
+
+    Deliberately NOT auto-recovered. Resetting a stuck row to "pending" would
+    re-dial a number that may have already connected and been transferred, so a
+    stuck call is a human decision, not a retry. See SERVICE_CONTRACTS.yaml.
+
+    Age is measured from created_at, not from the moment of the claim, because
+    nothing records claim time (there is no started_at column and no migration to
+    add one). created_at age is therefore an UPPER BOUND on calling age, which
+    errs toward alerting earlier, never toward a false alarm: a call cannot
+    legitimately still be dialling once its row is this old.
+    """
+    try:
+        response = (
+            supabase.table("outbound_calls")
+            .select("id, created_at")
+            .eq("status", "calling")
+            .execute()
+        )
+    except Exception as error:
+        # Observability must never take down the dispatcher.
+        logger.warning("Could not read in-flight calls for gauges: %s", error)
+        return
+
+    rows = response.data or []
+    metrics.record("voice_calls_inflight_total", float(len(rows)))
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    oldest = 0.0
+    for row in rows:
+        created_at = row.get("created_at")
+        if not created_at:
+            continue
+        try:
+            stamp = datetime.datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=datetime.timezone.utc)
+        oldest = max(oldest, (now - stamp).total_seconds())
+
+    metrics.record("voice_calls_inflight_oldest_seconds", oldest)
+    if oldest > STUCK_CALL_AGE_SECONDS:
+        logger.error(
+            "%d call(s) still marked calling; oldest is %.0fs old. These need manual "
+            "inspection -- do NOT reset them to pending, that re-dials the number.",
+            len(rows),
+            oldest,
+        )
+
+
 @app.task(bind=True)
 def dispatch_pending_calls(self):
     """Periodic dispatcher: enqueue a dial task for every pending call inside the calling window."""
@@ -146,6 +209,8 @@ def dispatch_pending_calls(self):
                 # beat, so alerts measure truth, not a fabricated queue depth.
                 metrics.record("voice_calls_pending_total", float(len(response.data)))
                 metrics.record("voice_calls_queued_gauge", float(len(response.data)))
+
+                record_inflight_gauges()
 
                 if not response.data:
                     logger.info("No pending calls found in the queue.")

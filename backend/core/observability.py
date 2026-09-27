@@ -19,6 +19,60 @@ service_context: contextvars.ContextVar[str] = contextvars.ContextVar("service",
 
 otel_meter = None
 
+_otel_observation_cls: Any = None
+
+
+def _otel_observation() -> Any:
+    """Resolve opentelemetry.metrics.Observation once, and fail loudly.
+
+    This module stays importable without the OTel SDK, so the lookup cannot live
+    at module scope. It is resolved on first gauge registration instead, which
+    moves the failure from "silently, at every collection" to "immediately, at
+    startup" if the symbol is ever renamed again.
+    """
+    global _otel_observation_cls
+    if _otel_observation_cls is None:
+        from opentelemetry.metrics import Observation
+
+        _otel_observation_cls = Observation
+    return _otel_observation_cls
+
+
+def _assert_otel_gauge_api() -> None:
+    """Fail at import if the OTel SDK is present but its gauge API moved.
+
+    The observable-gauge callback contract is easy to get wrong and impossible to
+    spot by reading: a callback that raises, or returns the wrong shape, registers
+    without complaint and then exports nothing forever. Skip the check when the
+    SDK is absent, since this module must stay importable without it.
+    """
+    try:
+        import opentelemetry.metrics as otel_metrics
+    except ImportError:
+        return
+    name = getattr(otel_metrics, "Observation", None) or getattr(
+        otel_metrics, "Measurement", None
+    )
+    if name is None:
+        raise RuntimeError(
+            "opentelemetry.metrics exposes neither Observation nor Measurement; "
+            "the gauge callback contract has changed and every gauge would export nothing"
+        )
+    try:
+        # Probe the exact call _gauge_callback makes, so this guard validates the
+        # shape that actually ships rather than a hand-written approximation.
+        probe = name(0.0)
+    except Exception as error:  # pragma: no cover - guards an upstream API change
+        raise RuntimeError(
+            f"opentelemetry.metrics.{name.__name__} is not constructible with "
+            f"a single value: {error!r}. Every gauge would export nothing."
+        ) from error
+    if not hasattr(probe, "value"):
+        raise RuntimeError(
+            f"opentelemetry.metrics.{name.__name__} has no .value; the SDK iterates "
+            "returned measurements and would reject it"
+        )
+
 
 def current_otel_context() -> tuple[str, str]:
     """Return (trace_id, span_id) hex strings from the active OTel span, or ("-", "-")."""
@@ -129,10 +183,24 @@ class Metrics:
                 histogram.record(value_ms)
 
     def _gauge_callback(self, name: str) -> Callable[[Any], Any]:
-        def callback(callback_options: Any) -> Any:
-            from opentelemetry.metrics import Measurement
+        # The SDK calls this and iterates whatever comes back
+        # ("measurements = async_instrument.callback(...)"), so the callback must
+        # RETURN a list of measurements. It used to return [Measurement(v, {})],
+        # but Measurement was removed from opentelemetry.metrics; the replacement
+        # is Observation, with the same (value, attributes) shape. The stale name
+        # raised ImportError on every collection, and because the import sat
+        # inside the callback the gauge still registered cleanly -- so nothing
+        # failed loudly, the SDK just never received a data point, and the metric
+        # stayed permanently absent. That silently disabled every gauge in the
+        # system, including the stuck-call and backlog metrics the voice-call
+        # alerts are written against. _otel_observation() resolves the class once,
+        # at registration, so a future rename fails loudly and early instead.
+        observation_cls = _otel_observation()
+
+        def callback(callback_options: Any) -> list[Any]:
             with self._lock:
-                return [Measurement(self._gauges.get(name, 0.0), {})]
+                return [observation_cls(self._gauges.get(name, 0.0))]
+
         return callback
 
     def snapshot(self) -> dict[str, Any]:
@@ -145,6 +213,7 @@ class Metrics:
 
 
 metrics = Metrics()
+_assert_otel_gauge_api()
 
 
 def configure_otel(service_name: str) -> None:
