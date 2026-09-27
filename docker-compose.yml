@@ -149,6 +149,14 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # The redis entrypoint starts as root and drops to the redis user via
+    # setpriv before exec'ing the server. Without SETUID/SETGID that drop fails
+    # with "setresuid failed: Operation not permitted" and the container exits
+    # 127, so cap_drop: ALL on its own makes redis unstartable. no-new-privileges
+    # still prevents the server from regaining privilege once it has dropped.
+    cap_add:
+      - SETUID
+      - SETGID
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis-data:/data
