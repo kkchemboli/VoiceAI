@@ -18,6 +18,28 @@ COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 RUN ln -sf /dev/stdout /var/log/nginx/access.log \
     && ln -sf /dev/stderr /var/log/nginx/error.log
 
+# Run nginx as the unprivileged "nginx" user rather than as root.
+#
+# The image ships /var/cache/nginx owned by root, so when the master process runs
+# as root nginx creates and chowns its temp directories down to the worker user at
+# startup. docker-compose.yml drops every capability for this service
+# (cap_drop: ALL, no-new-privileges), so that chown returns EPERM and the master
+# aborts before it ever listens:
+#
+#   [emerg] chown("/var/cache/nginx/client_temp", 101) failed (1: Operation not permitted)
+#
+# which crash-looped the container on every start. nginx only attempts that chown
+# when the effective uid is 0, so starting unprivileged avoids it entirely --
+# but the directories then have to be writable up front, which is what the
+# mkdir/chown below is for. Port 8080 is unprivileged, so nothing else changes.
+RUN mkdir -p /var/cache/nginx/client_temp /var/cache/nginx/proxy_temp \
+             /var/cache/nginx/fastcgi_temp /var/cache/nginx/uwsgi_temp \
+             /var/cache/nginx/scgi_temp \
+    && chown -R nginx:nginx /var/cache/nginx /run \
+    && chmod -R u+rwX,go+rX /var/cache/nginx
+
+USER nginx
+
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD wget -q -O /dev/null http://127.0.0.1:8080/health

@@ -210,6 +210,24 @@ currently writes errors in that shape.
 - Receives the API base URL through `VITE_API_URL` or same-origin routing.
 - Does not receive server-side credentials.
 - Proxies or routes `/api` traffic to the `api` service through the deployment edge.
+- Runs nginx as the unprivileged `nginx` user, not as root. This is load-bearing
+  rather than cosmetic: the service sets `cap_drop: ALL` and
+  `no-new-privileges`, and an nginx master running as root creates and `chown`s
+  its temp directories down to the worker user at startup. With no capabilities
+  that `chown` returns `EPERM` and the master aborts before it ever binds, so the
+  container crash-looped on every start. nginx only attempts that `chown` when
+  the effective uid is 0, so starting unprivileged avoids it — at the cost of
+  having to pre-create and `chown` the temp paths at build time, which is what
+  `Dockerfile.frontend` now does. Verified: 0 restarts, `8080` published, `/`
+  serving the SPA, `/dashboard` falling through to `index.html` for client-side
+  routes, and `/api/knowledge/status` returning live Supabase rows through the
+  proxy.
+
+Note that only `/api/` is proxied. The API's health routes are `/health/live`
+and `/health/ready`, which sit outside that prefix and are answered by Compose
+health checks rather than through the browser, so `/api/health/live` correctly
+returns FastAPI's own 404 — which is a useful signal that the proxy really is
+forwarding to the API rather than falling through to the SPA.
 
 ## Network rules
 
