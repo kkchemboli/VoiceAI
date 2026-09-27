@@ -58,6 +58,18 @@ class Settings:
     # beyond that is shed by CPU-based admission control at load_threshold.
     voice_num_idle_processes: int
     voice_load_threshold: float
+    # Single-user login gate for the frontend.
+    #
+    # Deliberately Optional rather than required: this module is a singleton
+    # imported by the worker, the voice agent, and the RAG engine, none of which
+    # serve HTTP to a browser. Making these mandatory here would stop the worker
+    # booting on a credential it never reads. The API enforces them instead, and
+    # refuses to start without them (see core/auth.py assert_auth_configured).
+    #
+    # admin_password_hash is a bcrypt digest, never the password itself.
+    admin_username: Optional[str]
+    admin_password_hash: Optional[str]
+    session_secret: Optional[str]
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -89,6 +101,9 @@ class Settings:
                 0, _int_or(os.getenv("VOICE_NUM_IDLE_PROCESSES"), 4)
             ),
             voice_load_threshold=_float_or(os.getenv("VOICE_LOAD_THRESHOLD"), 0.7),
+            admin_username=os.getenv("ADMIN_USERNAME"),
+            admin_password_hash=os.getenv("ADMIN_PASSWORD_HASH"),
+            session_secret=os.getenv("SESSION_SECRET"),
         )
 
 

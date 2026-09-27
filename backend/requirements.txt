@@ -128,3 +128,8 @@ zstandard==0.25.0
 celery==5.4.0
 redis==5.0.3
 pytz==2024.1
+# Single-user login gate for the published frontend. bcrypt for the stored
+# password hash, pyjwt (already pinned above) for the session token. bcrypt
+# ships manylinux wheels for cp39-abi3, so this resolves on python:slim without
+# a compiler.
+bcrypt==4.2.1

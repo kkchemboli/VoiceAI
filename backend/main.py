@@ -1,5 +1,6 @@
 import os
 import logging
+import secrets
 import time
 from fastapi import FastAPI, HTTPException, Body, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +17,17 @@ from services.supabase_client import execute_query, get_supabase_client
 from services.runtime_config import get_sheet_url, set_sheet_url
 from utils.distributed_lock import BULK_IMPORT_LOCK, is_lock_held, redis_client
 from core.config import settings
+from core.auth import (
+    assert_auth_configured,
+    clear_session_cookie,
+    is_proxied,
+    is_public_path,
+    issue_session,
+    read_session,
+    set_session_cookie,
+    unauthorized,
+    verify_password,
+)
 from core.observability import (
     celery_task_headers,
     configure_logging,
@@ -45,6 +57,15 @@ logger = logging.getLogger("voice-backend")
 async def lifespan(app: FastAPI):
     # Startup: Initialize services
     app.state.startup_complete = False
+
+    # Deliberately outside the try below. This one must not be swallowed into a
+    # warning: an API that boots without ADMIN_USERNAME / ADMIN_PASSWORD_HASH /
+    # SESSION_SECRET serves every /api route to anyone who can reach it,
+    # including the endpoints that place real phone calls. Refusing to start is
+    # the whole point, so it has to propagate and take the process down.
+    assert_auth_configured()
+    logger.info("Login gate configured for single-user access.")
+
     logger.info("Initializing backend services...")
     try:
         if hasattr(calendar_service, 'initialize'):
@@ -62,6 +83,29 @@ async def lifespan(app: FastAPI):
     logger.info("Shutdown complete.")
 
 app = FastAPI(title="Voice Agent API", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def require_login_for_browser_traffic(request: Request, call_next):
+    """Challenge anything the frontend proxied; trust direct server-to-server.
+
+    Runs before the observability middleware below in practice (Starlette applies
+    the most recently added middleware first), so a rejected request is answered
+    without entering the instrumentation path. That is intentional: a flood of
+    unauthenticated probes should not be recorded as a wave of real API calls.
+    """
+    path = request.url.path
+    if not path.startswith("/api/") or is_public_path(path):
+        return await call_next(request)
+
+    # Only nginx sets the marker, and a browser cannot reach :8000 directly, so
+    # "marked" reliably means "came from a browser through the frontend". The
+    # unmarked case is the published-port server-to-server path, which is trusted
+    # on the strength of the network firewall rather than a credential.
+    if is_proxied(request) and read_session(request) is None:
+        return unauthorized()
+
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -118,6 +162,82 @@ async def readiness_check():
     if not startup_complete:
         return JSONResponse(status_code=503, content=payload)
     return payload
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+def request_client_host(request: Request) -> str:
+    """Peer address for logging, without trusting a client-supplied header."""
+    client = request.client
+    return client.host if client and client.host else "unknown"
+
+
+@app.post("/api/auth/login")
+async def login(credentials: LoginRequest):
+    """Authenticate the single admin user and issue a session cookie.
+
+    Failure is deliberately undifferentiated: a wrong username and a wrong
+    password produce the same 401 with the same body, so this cannot be used to
+    enumerate whether a username exists.
+    """
+    if not settings.admin_username:
+        # assert_auth_configured should have stopped startup, but if it was ever
+        # bypassed, fail closed rather than letting anyone in.
+        logger.error("Login attempted but ADMIN_USERNAME is unset; refusing.")
+        raise HTTPException(status_code=503, detail="Login is not configured")
+
+    username_matches = secrets.compare_digest(
+        credentials.username.encode("utf-8"),
+        settings.admin_username.encode("utf-8"),
+    )
+    password_matches = verify_password(credentials.password)
+
+    if not (username_matches and password_matches):
+        logger.warning(
+            "Failed login attempt",
+            extra={"service": "api", "remote": request_client_host(request)},
+        )
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    token = issue_session(settings.admin_username)
+    response = JSONResponse({"authenticated": True, "username": settings.admin_username})
+    set_session_cookie(response, token)
+    logger.info("Login succeeded", extra={"service": "api", "user": settings.admin_username})
+    return response
+
+
+def request_client_host(request: Request) -> str:
+    """Peer address for logging, without trusting a client-supplied header."""
+    client = request.client
+    return client.host if client and client.host else "unknown"
+
+
+@app.post("/api/auth/logout")
+async def logout():
+    """Drop the session cookie.
+
+    The token itself stays valid until it expires, since sessions are stateless.
+    That is acceptable for a 12-hour single-user session; it is called out in the
+    docs rather than hidden, because "logout" that does not revoke is the kind of
+    thing that surprises people.
+    """
+    response = JSONResponse({"authenticated": False})
+    clear_session_cookie(response)
+    return response
+
+
+@app.get("/api/auth/session")
+async def session_status(request: Request):
+    """Report whether the caller holds a valid session.
+
+    Returns 200 with a boolean either way rather than 401 when logged out, so the
+    SPA can ask this on every load without treating "not logged in" as an error.
+    """
+    username = read_session(request)
+    return {"authenticated": username is not None, "username": username}
 
 
 # Enable CORS for frontend development
